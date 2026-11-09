@@ -33,15 +33,15 @@ The initial version of the platform focuses on:
 
 ## Technology Stack
 
-| Component        | Technology               |
-| ---------------- | ------------------------ |
-| Frontend         | React + Next.js          |
-| UI Framework     | Bootstrap                |
-| Styling          | CSS Modules + Global CSS |
-| Backend          | Python                   |
-| Database         | PostgreSQL               |
-| Containerization | Docker                   |
-| CI/CD            | GitHub Actions           |
+| Component        | Technology      |
+| ---------------- | --------------- |
+| Frontend         | React + Next.js |
+| UI Framework     | Bootstrap       |
+| Styling          | CSS Modules     |
+| Backend          | Python          |
+| Database         | PostgreSQL      |
+| Containerization | Docker          |
+| CI/CD            | GitHub Actions  |
 
 ## Team Structure
 
