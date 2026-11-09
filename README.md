@@ -63,6 +63,10 @@ npm install
 npm run dev
 ```
 
+## Continuous Integration
+
+The GitHub Actions CI workflow runs frontend linting and production builds, backend and agent-service tests, and Docker Compose validation and image builds. It runs for pushes to `main`, pull requests targeting `main`, and manual dispatches. Open the repository's **Actions** tab on GitHub to view workflow runs and check results.
+
 ## Production
 
 Set production values in `.env`, then build and start without source mounts:
