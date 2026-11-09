@@ -1,0 +1,11 @@
+@import "./variables.css";
+@import "./bootstrap-overrides.css";
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: var(--okala-background);
+  color: var(--okala-ink);
+}

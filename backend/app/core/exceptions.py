@@ -1,0 +1,1 @@
+"""Application exception boundary reserved for future API errors."""

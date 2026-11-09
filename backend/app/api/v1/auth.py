@@ -1,0 +1,1 @@
+"""Authentication routes reserved for future implementation."""

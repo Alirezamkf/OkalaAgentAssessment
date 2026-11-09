@@ -1,0 +1,1 @@
+"""Agent integration configuration boundary."""

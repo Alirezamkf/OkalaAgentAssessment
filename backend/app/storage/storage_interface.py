@@ -1,0 +1,1 @@
+"""Storage abstraction reserved until the video storage technology is decided."""

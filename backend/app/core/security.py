@@ -1,0 +1,1 @@
+"""Security boundary reserved for future authentication work."""

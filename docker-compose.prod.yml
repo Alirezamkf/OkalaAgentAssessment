@@ -1,0 +1,66 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      NODE_ENV: production
+      BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
+      AGENT_SERVICE_URL: ${AGENT_SERVICE_URL:-http://agent-service:8001}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      agent-service:
+        condition: service_healthy
+    networks: [okala]
+
+  backend:
+    build: ./backend
+    environment:
+      ENVIRONMENT: production
+      FRONTEND_URL: ${FRONTEND_URL}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AGENT_SERVICE_URL: http://agent-service:8001
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      agent-service:
+        condition: service_healthy
+    networks: [okala]
+
+  agent-service:
+    build: ./agents/agent_service
+    environment:
+      ENVIRONMENT: production
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+    networks: [okala]
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks: [okala]
+
+networks:
+  okala:
+    driver: bridge
+
+volumes:
+  postgres_data:

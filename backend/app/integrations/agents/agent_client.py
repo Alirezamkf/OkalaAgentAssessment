@@ -1,0 +1,1 @@
+"""HTTP client boundary for communicating with independent agent services."""

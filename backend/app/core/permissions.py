@@ -1,0 +1,1 @@
+"""Permission boundary reserved for future role checks."""

@@ -1,80 +1,94 @@
-# Okala – AI Agent Assessment Platform
+# Okala Agent Assessment
 
-## Project Overview
-
-This repository contains the development of an AI Agent-based Candidate Assessment Platform for **Okala**.
-
-The project is provided to our team through the educational programs and classes organized by **CafeTadris**.
-
-The platform aims to enable Okala's HR team to assess candidates through an AI Agent that supervises assessment sessions, records candidate activities, and supports the evaluation process.
-
-## Project Background
-
-- **Client:** Okala
-- **Educational Partner:** CafeTadris
-- **Development Team:** 3 Members
-- **Project Origin:** CafeTadris Educational Programs
-- **Project Supervision:** CafeTadris
-
-CafeTadris is responsible for supervising the project throughout its development, while our three-member team is responsible for analyzing, designing, implementing, testing, and delivering the platform.
-
-## Main Objectives
-
-The initial version of the platform focuses on:
-
-- Providing an HR dashboard for managing assessments and candidates.
-- Allowing candidates to access assessments through unique personal links.
-- Verifying candidate identities through SMS authentication.
-- Recording candidate webcam and screen activity simultaneously, after obtaining consent.
-- Integrating with the existing AI Agent core.
-- Managing multiple assessment sessions concurrently.
-- Providing assessment results and reports for HR.
-- Providing a technical dashboard for monitoring system status and reports.
+An initial project skeleton for an agent-based assessment platform developed for Okala through CafeTadris. The current scope is architecture and infrastructure validation only. Assessment workflows, authentication, recording, and AI behavior are intentionally not implemented.
 
 ## Technology Stack
 
-| Component        | Technology      |
-| ---------------- | --------------- |
-| Frontend         | React + Next.js |
-| UI Framework     | Bootstrap       |
-| Styling          | CSS Modules     |
-| Backend          | Python          |
-| Database         | PostgreSQL      |
-| Containerization | Docker          |
-| CI/CD            | GitHub Actions  |
+- Frontend: Next.js App Router, React, TypeScript, Bootstrap
+- Backend: Python, FastAPI, REST API
+- Agent service: independent Python/FastAPI placeholder
+- Database: PostgreSQL, accessed by the backend only
+- Infrastructure: Docker and Docker Compose
 
-## Team Structure
+## Architecture
 
-This project is developed by a three-member team.
+The frontend calls the backend REST API. The backend owns PostgreSQL access and communicates with independent agent services through APIs. Agents do not connect directly to PostgreSQL. Video storage remains undecided and is represented by `storage/videos`.
 
-All team members collaborate through this repository using Git and GitHub.
-
-Project tasks, development progress, technical decisions, and documentation will be maintained here to ensure transparency and coordination.
-
-## Project Supervision
-
-The project is developed as part of the CafeTadris educational programs and is subject to CafeTadris supervision.
-
-## Repository Structure
+## Directory Structure
 
 ```text
-okala-agent-assessment/
-├── frontend/
-├── backend/
-├── infrastructure/
-├── docker-compose.yml
-├── .env.example
-└── README.md
+frontend/                 Next.js application
+backend/                  FastAPI application and backend tests
+agents/agent_service/     Independent generic agent placeholder
+storage/videos/           Reserved video storage location
+infrastructure/           Docker and CI/CD placeholders
+docker-compose*.yml       Development and production service orchestration
 ```
 
-The repository structure may evolve as the project requirements and implementation details become clearer.
+## Prerequisites
 
-## Development Status
+- Docker Desktop with Compose
+- Node.js 22+ and npm (for local frontend checks)
+- Python 3.12+ (for local backend checks)
 
-**Status:** Planning and Initial Setup
+## Environment Configuration
 
-The team is currently working on requirements analysis, system architecture, repository setup, and development planning.
+Copy `.env.example` to `.env` and replace the local PostgreSQL password before starting the stack:
 
----
+```powershell
+Copy-Item .env.example .env
+```
 
-_Developed for Okala through CafeTadris educational programs._
+Do not commit `.env` or real secrets.
+
+## Development
+
+Start all services with development-oriented configuration:
+
+```powershell
+docker compose up --build
+```
+
+Stop the stack:
+
+```powershell
+docker compose down
+```
+
+Run the frontend locally:
+
+```powershell
+Set-Location frontend
+npm install
+npm run dev
+```
+
+## Production
+
+Set production values in `.env`, then build and start without source mounts:
+
+```powershell
+docker compose -f docker-compose.prod.yml up --build -d
+```
+
+Stop production services:
+
+```powershell
+docker compose -f docker-compose.prod.yml down
+```
+
+## Service URLs
+
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- Agent service: http://localhost:8001
+- PostgreSQL: internal Docker network only
+
+## Health Checks
+
+```text
+GET http://localhost:8000/api/v1/health
+GET http://localhost:8001/health
+```
+
+Expected responses are `{"status":"healthy","service":"backend"}` and `{"status":"healthy","service":"agent"}` respectively. The frontend homepage displays all three service states and remains usable when either API is unavailable.
