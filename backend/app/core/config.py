@@ -10,7 +10,7 @@ class Settings:
     ]
     database_url: str = os.getenv(
         "DATABASE_URL",
-        "postgresql://okala:okala_password@localhost:5432/okala_assessment",
+        "postgresql+psycopg://okala:okala_password@localhost:5432/okala_assessment",
     )
     agent_service_url: str = os.getenv("AGENT_SERVICE_URL", "http://localhost:8001")
 

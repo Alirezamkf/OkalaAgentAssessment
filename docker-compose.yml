@@ -18,7 +18,7 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-okala}:${POSTGRES_PASSWORD:-okala_password}@postgres:5432/${POSTGRES_DB:-okala_assessment}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-okala}:${POSTGRES_PASSWORD:-okala_password}@postgres:5432/${POSTGRES_DB:-okala_assessment}
       AGENT_SERVICE_URL: http://agent-service:8001
     ports:
       - "8000:8000"
