@@ -12,7 +12,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import settings
 from app.database.base import Base
-from app.models import HRUser  # noqa: F401 - Register the model table in metadata
+from app.models import Exam, HRUser, Question  # noqa: F401 - Register model tables in metadata
 
 
 config = context.config
