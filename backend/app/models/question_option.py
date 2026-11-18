@@ -2,12 +2,13 @@
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, Text, text
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
 
 if TYPE_CHECKING:
+    from app.models.candidate_answer import CandidateAnswer
     from app.models.question import Question
 
 
@@ -22,6 +23,7 @@ class QuestionOption(Base):
             unique=True,
             postgresql_where=text("is_correct = true"),
         ),
+        UniqueConstraint("id", "question_id", name="uq_question_options_id_question"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -34,3 +36,7 @@ class QuestionOption(Base):
     is_correct: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     question: Mapped["Question"] = relationship(back_populates="options")
+    candidate_answers: Mapped[list["CandidateAnswer"]] = relationship(
+        back_populates="selected_option",
+        overlaps="question,candidate_answers",
+    )

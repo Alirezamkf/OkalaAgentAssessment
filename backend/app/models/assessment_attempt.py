@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base
 
 if TYPE_CHECKING:
+    from app.models.candidate_answer import CandidateAnswer
     from app.models.candidate import Candidate
     from app.models.exam import Exam
     from app.models.exam_invitation import ExamInvitation
@@ -64,3 +65,4 @@ class AssessmentAttempt(Base):
         uselist=False,
         overlaps="exam,candidate",
     )
+    answers: Mapped[list["CandidateAnswer"]] = relationship(back_populates="attempt")

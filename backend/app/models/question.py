@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base
 
 if TYPE_CHECKING:
+    from app.models.candidate_answer import CandidateAnswer
     from app.models.exam import Exam
     from app.models.question_option import QuestionOption
 
@@ -38,3 +39,7 @@ class Question(Base):
 
     exam: Mapped["Exam"] = relationship(back_populates="questions")
     options: Mapped[list["QuestionOption"]] = relationship(back_populates="question")
+    candidate_answers: Mapped[list["CandidateAnswer"]] = relationship(
+        back_populates="question",
+        overlaps="selected_option",
+    )
