@@ -4,12 +4,13 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, ForeignKey, Index, String
+from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
 
 if TYPE_CHECKING:
+    from app.models.assessment_attempt import AssessmentAttempt
     from app.models.candidate import Candidate
     from app.models.exam import Exam
 
@@ -32,7 +33,10 @@ class ExamInvitation(Base):
     """
 
     __tablename__ = "exam_invitations"
-    __table_args__ = (Index("uq_exam_invitations_token_hash", "token_hash", unique=True),)
+    __table_args__ = (
+        Index("uq_exam_invitations_token_hash", "token_hash", unique=True),
+        UniqueConstraint("id", "candidate_id", "exam_id", name="uq_invitation_identity"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     candidate_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("candidates.id"), nullable=False)
@@ -48,3 +52,8 @@ class ExamInvitation(Base):
 
     candidate: Mapped["Candidate"] = relationship(back_populates="invitations")
     exam: Mapped["Exam"] = relationship(back_populates="invitations")
+    attempt: Mapped["AssessmentAttempt"] = relationship(
+        back_populates="exam_invitation",
+        uselist=False,
+        overlaps="attempts,exam,candidate",
+    )

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base
 
 if TYPE_CHECKING:
+    from app.models.assessment_attempt import AssessmentAttempt
     from app.models.exam_invitation import ExamInvitation
 
 
@@ -32,3 +33,7 @@ class Candidate(Base):
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     invitations: Mapped[list["ExamInvitation"]] = relationship(back_populates="candidate")
+    attempts: Mapped[list["AssessmentAttempt"]] = relationship(
+        back_populates="candidate",
+        overlaps="exam_invitation",
+    )
