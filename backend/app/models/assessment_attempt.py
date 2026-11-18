@@ -11,6 +11,7 @@ from app.database.base import Base
 
 if TYPE_CHECKING:
     from app.models.attempt_event import AttemptEvent
+    from app.models.attempt_question_order import AttemptQuestionOrder
     from app.models.candidate_answer import CandidateAnswer
     from app.models.candidate import Candidate
     from app.models.exam import Exam
@@ -44,6 +45,7 @@ class AssessmentAttempt(Base):
         Index("ix_assessment_attempts_invitation_id", "exam_invitation_id", unique=True),
         Index("ix_assessment_attempts_status", "status"),
         UniqueConstraint("exam_invitation_id", name="uq_assessment_attempts_invitation_id"),
+        UniqueConstraint("id", "exam_invitation_id", name="uq_assessment_attempts_id_invitation"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -70,3 +72,4 @@ class AssessmentAttempt(Base):
     answers: Mapped[list["CandidateAnswer"]] = relationship(back_populates="attempt")
     events: Mapped[list["AttemptEvent"]] = relationship(back_populates="attempt")
     recordings: Mapped[list["RecordingMetadata"]] = relationship(back_populates="attempt")
+    question_order: Mapped[list["AttemptQuestionOrder"]] = relationship(back_populates="attempt")

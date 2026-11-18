@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base
 
 if TYPE_CHECKING:
+    from app.models.attempt_question_order import AttemptQuestionOrder
     from app.models.candidate_answer import CandidateAnswer
     from app.models.exam_invitation_question import ExamInvitationQuestion
     from app.models.exam import Exam
@@ -49,3 +50,4 @@ class Question(Base):
         back_populates="question",
         overlaps="invitation,selected_questions",
     )
+    attempt_question_orders: Mapped[list["AttemptQuestionOrder"]] = relationship(back_populates="question")
