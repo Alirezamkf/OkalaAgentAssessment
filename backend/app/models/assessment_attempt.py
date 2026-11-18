@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, ForeignKey, ForeignKeyConstraint, Index, UniqueConstraint, func
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, ForeignKeyConstraint, Index, Integer, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -46,6 +46,10 @@ class AssessmentAttempt(Base):
         Index("ix_assessment_attempts_status", "status"),
         UniqueConstraint("exam_invitation_id", name="uq_assessment_attempts_invitation_id"),
         UniqueConstraint("id", "exam_invitation_id", name="uq_assessment_attempts_id_invitation"),
+        CheckConstraint(
+            "current_question_position IS NULL OR current_question_position >= 1",
+            name="ck_assessment_attempts_current_position_positive",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -61,6 +65,7 @@ class AssessmentAttempt(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    current_question_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     exam: Mapped["Exam"] = relationship(back_populates="attempts")
     candidate: Mapped["Candidate"] = relationship(back_populates="attempts")
