@@ -11,6 +11,7 @@ from app.database.base import Base
 
 if TYPE_CHECKING:
     from app.models.assessment_attempt import AssessmentAttempt
+    from app.models.exam_invitation_question import ExamInvitationQuestion
     from app.models.candidate import Candidate
     from app.models.exam import Exam
 
@@ -36,6 +37,7 @@ class ExamInvitation(Base):
     __table_args__ = (
         Index("uq_exam_invitations_token_hash", "token_hash", unique=True),
         UniqueConstraint("id", "candidate_id", "exam_id", name="uq_invitation_identity"),
+        UniqueConstraint("id", "exam_id", name="uq_invitation_id_exam"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -56,4 +58,8 @@ class ExamInvitation(Base):
         back_populates="exam_invitation",
         uselist=False,
         overlaps="attempts,exam,candidate",
+    )
+    selected_questions: Mapped[list["ExamInvitationQuestion"]] = relationship(
+        back_populates="invitation",
+        overlaps="question",
     )
