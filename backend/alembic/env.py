@@ -12,7 +12,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import settings
 from app.database.base import Base
-from app.models import AssessmentAttempt, Candidate, CandidateAnswer, Exam, ExamInvitation, HRUser, Question, QuestionOption  # noqa: F401 - Register model tables in metadata
+from app.models import AssessmentAttempt, AttemptEvent, Candidate, CandidateAnswer, Exam, ExamInvitation, HRUser, Question, QuestionOption  # noqa: F401 - Register model tables in metadata
 
 
 config = context.config
