@@ -1,6 +1,6 @@
 """Backend ORM models and their registration in the shared metadata."""
 
-from app.models.assessment_attempt import AssessmentAttempt, AttemptStatus
+from app.models.assessment_attempt import AssessmentAttempt, AttemptStatus, HRDecision
 from app.models.attempt_question_order import AttemptQuestionOrder
 from app.models.attempt_event import AttemptEvent
 from app.models.candidate_answer import CandidateAnswer
@@ -23,6 +23,7 @@ __all__ = [
     "AttemptEvent",
     "AttemptQuestionOrder",
     "AttemptStatus",
+    "HRDecision",
     "Exam",
     "ExamInvitation",
     "ExamInvitationQuestion",

@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, ForeignKeyConstraint, Index, Integer, UniqueConstraint, func
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, ForeignKeyConstraint, Index, Integer, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from app.models.exam import Exam
     from app.models.exam_invitation import ExamInvitation
     from app.models.recording_metadata import RecordingMetadata
+    from app.models.hr_user import HRUser
 
 
 class AttemptStatus(str, Enum):
@@ -28,6 +29,15 @@ class AttemptStatus(str, Enum):
     TIMED_OUT = "Timed Out"
     INTERRUPTED = "Interrupted"
     CANCELLED = "Cancelled"
+
+
+class HRDecision(str, Enum):
+    """Latest decision values available to an HR administrator."""
+
+    UNSET = "Unset"
+    ACCEPTED = "Accepted"
+    REJECTED = "Rejected"
+    NEEDS_REVIEW = "Needs Review"
 
 
 class AssessmentAttempt(Base):
@@ -50,6 +60,11 @@ class AssessmentAttempt(Base):
             "current_question_position IS NULL OR current_question_position >= 1",
             name="ck_assessment_attempts_current_position_positive",
         ),
+        CheckConstraint(
+            "(hr_decision = 'Unset' AND hr_decided_by_id IS NULL AND hr_decision_updated_at IS NULL) "
+            "OR (hr_decision <> 'Unset' AND hr_decided_by_id IS NOT NULL AND hr_decision_updated_at IS NOT NULL)",
+            name="ck_assessment_attempts_hr_decision_consistency",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -66,6 +81,14 @@ class AssessmentAttempt(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     current_question_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hr_decision: Mapped[HRDecision] = mapped_column(
+        SAEnum(HRDecision, name="hr_decision", native_enum=False),
+        nullable=False,
+        default=HRDecision.UNSET,
+        server_default=text("'Unset'"),
+    )
+    hr_decided_by_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("hr_users.id"), nullable=True)
+    hr_decision_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     exam: Mapped["Exam"] = relationship(back_populates="attempts")
     candidate: Mapped["Candidate"] = relationship(back_populates="attempts")
@@ -78,3 +101,7 @@ class AssessmentAttempt(Base):
     events: Mapped[list["AttemptEvent"]] = relationship(back_populates="attempt")
     recordings: Mapped[list["RecordingMetadata"]] = relationship(back_populates="attempt")
     question_order: Mapped[list["AttemptQuestionOrder"]] = relationship(back_populates="attempt")
+    hr_decided_by: Mapped["HRUser | None"] = relationship(
+        back_populates="hr_decided_attempts",
+        foreign_keys=[hr_decided_by_id],
+    )

@@ -1,9 +1,14 @@
 """Human resources user model and the information needed to identify the user."""
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import BigInteger, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
+
+if TYPE_CHECKING:
+    from app.models.assessment_attempt import AssessmentAttempt
 
 
 class HRUser(Base):
@@ -21,3 +26,8 @@ class HRUser(Base):
     username: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     # Only the hash is stored so the raw password is not kept in the database.
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    hr_decided_attempts: Mapped[list["AssessmentAttempt"]] = relationship(
+        back_populates="hr_decided_by",
+        foreign_keys="AssessmentAttempt.hr_decided_by_id",
+    )
