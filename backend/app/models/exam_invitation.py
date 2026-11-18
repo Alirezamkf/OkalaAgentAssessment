@@ -76,6 +76,6 @@ class ExamInvitation(Base):
     )
     selected_questions: Mapped[list["ExamInvitationQuestion"]] = relationship(
         back_populates="invitation",
-        overlaps="question",
+        overlaps="exam_question,invitation_selections",
     )
     consents: Mapped[list["CandidateConsent"]] = relationship(back_populates="exam_invitation")

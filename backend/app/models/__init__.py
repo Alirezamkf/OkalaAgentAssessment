@@ -8,11 +8,15 @@ from app.models.candidate_answer import CandidateAnswer
 from app.models.candidate import Candidate
 from app.models.candidate_consent import CandidateConsent, ConsentDecision
 from app.models.exam import Exam, ExamStatus
+from app.models.exam_question import ExamQuestion
+from app.models.exam_question_option import ExamQuestionOption
 from app.models.exam_invitation import ExamInvitation, InvitationStatus
 from app.models.exam_invitation_question import ExamInvitationQuestion
 from app.models.hr_user import HRUser
 from app.models.question import Question
 from app.models.question_option import QuestionOption
+from app.models.question_set import QuestionSet
+from app.models.question_set_item import QuestionSetItem
 from app.models.recording_metadata import RecordingMetadata
 
 __all__ = [
@@ -31,9 +35,13 @@ __all__ = [
     "ExamInvitation",
     "ExamInvitationQuestion",
     "ExamStatus",
+    "ExamQuestion",
+    "ExamQuestionOption",
     "HRUser",
     "InvitationStatus",
     "Question",
     "QuestionOption",
+    "QuestionSet",
+    "QuestionSetItem",
     "RecordingMetadata",
 ]

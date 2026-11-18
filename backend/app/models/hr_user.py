@@ -9,6 +9,7 @@ from app.database.base import Base
 
 if TYPE_CHECKING:
     from app.models.assessment_attempt import AssessmentAttempt
+    from app.models.question_set import QuestionSet
 
 
 class HRUser(Base):
@@ -38,4 +39,7 @@ class HRUser(Base):
     hr_decided_attempts: Mapped[list["AssessmentAttempt"]] = relationship(
         back_populates="hr_decided_by",
         foreign_keys="AssessmentAttempt.hr_decided_by_id",
+    )
+    created_question_sets: Mapped[list["QuestionSet"]] = relationship(
+        back_populates="creator",
     )

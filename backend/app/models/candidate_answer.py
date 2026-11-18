@@ -10,26 +10,26 @@ from app.database.base import Base
 
 if TYPE_CHECKING:
     from app.models.assessment_attempt import AssessmentAttempt
-    from app.models.question import Question
-    from app.models.question_option import QuestionOption
+    from app.models.exam_question import ExamQuestion
+    from app.models.exam_question_option import ExamQuestionOption
 
 
 class CandidateAnswer(Base):
-    """One answer record for one question in one assessment attempt.
+    """One answer record for one exam-owned question in an attempt.
 
-    Only the selected option reference is stored. Correctness and scoring
-    remain in the question-option model and future assessment services.
+    Only the selected exam question option is stored. Correctness is owned
+    by ExamQuestionOption and is not duplicated here.
     """
 
     __tablename__ = "candidate_answers"
     __table_args__ = (
         ForeignKeyConstraint(
-            ["selected_option_id", "question_id"],
-            ["question_options.id", "question_options.question_id"],
-            name="fk_candidate_answers_selected_option_question",
+            ["selected_option_id", "exam_question_id"],
+            ["exam_question_options.id", "exam_question_options.exam_question_id"],
+            name="fk_candidate_answers_selected_option_exam_question",
         ),
-        UniqueConstraint("attempt_id", "question_id", name="uq_candidate_answers_attempt_question"),
-        Index("ix_candidate_answers_question_id", "question_id"),
+        UniqueConstraint("attempt_id", "exam_question_id", name="uq_candidate_answers_attempt_question"),
+        Index("ix_candidate_answers_exam_question_id", "exam_question_id"),
         Index("ix_candidate_answers_selected_option_id", "selected_option_id"),
     )
 
@@ -39,20 +39,19 @@ class CandidateAnswer(Base):
         ForeignKey("assessment_attempts.id"),
         nullable=False,
     )
-    question_id: Mapped[int] = mapped_column(
+    exam_question_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("questions.id"),
+        ForeignKey("exam_questions.id"),
         nullable=False,
     )
     selected_option_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     attempt: Mapped["AssessmentAttempt"] = relationship(back_populates="answers")
-    question: Mapped["Question"] = relationship(
+    exam_question: Mapped["ExamQuestion"] = relationship(
         back_populates="candidate_answers",
-        overlaps="selected_option",
     )
-    selected_option: Mapped["QuestionOption | None"] = relationship(
+    selected_option: Mapped["ExamQuestionOption | None"] = relationship(
         back_populates="candidate_answers",
-        overlaps="question",
+        overlaps="exam_question",
     )
