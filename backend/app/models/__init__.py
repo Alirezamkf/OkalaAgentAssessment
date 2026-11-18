@@ -3,7 +3,7 @@
 from app.models.assessment_attempt import AssessmentAttempt, AttemptStatus, HRDecision
 from app.models.assessment_retention_processing import AssessmentRetentionProcessing, RetentionProcessingStatus
 from app.models.attempt_question_order import AttemptQuestionOrder
-from app.models.attempt_event import AttemptEvent
+from app.models.attempt_event import AttemptEvent, AttemptEventType
 from app.models.candidate_answer import CandidateAnswer
 from app.models.candidate import Candidate
 from app.models.candidate_consent import CandidateConsent
@@ -25,6 +25,7 @@ __all__ = [
     "CandidateConsent",
     "AssessmentAttempt",
     "AttemptEvent",
+    "AttemptEventType",
     "AttemptQuestionOrder",
     "AttemptStatus",
     "AssessmentRetentionProcessing",
