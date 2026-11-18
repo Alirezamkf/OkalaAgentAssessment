@@ -6,7 +6,7 @@ from app.models.attempt_question_order import AttemptQuestionOrder
 from app.models.attempt_event import AttemptEvent
 from app.models.candidate_answer import CandidateAnswer
 from app.models.candidate import Candidate
-from app.models.candidate_consent import CandidateConsent, ConsentDecision
+from app.models.candidate_consent import CandidateConsent
 from app.models.exam import Exam, ExamStatus
 from app.models.exam_question import ExamQuestion
 from app.models.exam_question_option import ExamQuestionOption
@@ -23,7 +23,6 @@ __all__ = [
     "Candidate",
     "CandidateAnswer",
     "CandidateConsent",
-    "ConsentDecision",
     "AssessmentAttempt",
     "AttemptEvent",
     "AttemptQuestionOrder",

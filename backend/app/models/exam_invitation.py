@@ -78,4 +78,7 @@ class ExamInvitation(Base):
         back_populates="invitation",
         overlaps="exam_question,invitation_selections",
     )
-    consents: Mapped[list["CandidateConsent"]] = relationship(back_populates="exam_invitation")
+    consent: Mapped["CandidateConsent | None"] = relationship(
+        back_populates="exam_invitation",
+        uselist=False,
+    )
