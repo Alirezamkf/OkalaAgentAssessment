@@ -1,0 +1,50 @@
+"""ORM model for secure invitations connecting candidates to exams."""
+
+from datetime import datetime
+from enum import Enum
+from typing import TYPE_CHECKING
+
+from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, ForeignKey, Index, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database.base import Base
+
+if TYPE_CHECKING:
+    from app.models.candidate import Candidate
+    from app.models.exam import Exam
+
+
+class InvitationStatus(str, Enum):
+    """States in the invitation lifecycle, independent of exam status."""
+
+    PENDING = "Pending"
+    ACCEPTED = "Accepted"
+    EXPIRED = "Expired"
+    CANCELLED = "Cancelled"
+
+
+class ExamInvitation(Base):
+    """Invitation linking one candidate to one exam.
+
+    The token hash is a SHA-256 hexadecimal digest; the raw token is never
+    represented or persisted by this model. Separate rows for the same
+    candidate and exam are intentionally allowed.
+    """
+
+    __tablename__ = "exam_invitations"
+    __table_args__ = (Index("uq_exam_invitations_token_hash", "token_hash", unique=True),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    candidate_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("candidates.id"), nullable=False)
+    exam_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("exams.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[InvitationStatus] = mapped_column(
+        SAEnum(InvitationStatus, name="invitation_status", native_enum=False),
+        nullable=False,
+        default=InvitationStatus.PENDING,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    candidate: Mapped["Candidate"] = relationship(back_populates="invitations")
+    exam: Mapped["Exam"] = relationship(back_populates="invitations")

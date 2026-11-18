@@ -11,6 +11,7 @@ from app.database.base import Base
 
 if TYPE_CHECKING:
     from app.models.question import Question
+    from app.models.exam_invitation import ExamInvitation
 
 
 class ExamStatus(str, Enum):
@@ -61,3 +62,4 @@ class Exam(Base):
     )
 
     questions: Mapped[list["Question"]] = relationship(back_populates="exam")
+    invitations: Mapped[list["ExamInvitation"]] = relationship(back_populates="exam")
