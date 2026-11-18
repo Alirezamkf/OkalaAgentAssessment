@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -39,6 +39,10 @@ class ExamInvitation(Base):
         Index("uq_exam_invitations_token_hash", "token_hash", unique=True),
         UniqueConstraint("id", "candidate_id", "exam_id", name="uq_invitation_identity"),
         UniqueConstraint("id", "exam_id", name="uq_invitation_id_exam"),
+        CheckConstraint(
+            "failed_identity_attempts >= 0",
+            name="ck_exam_invitations_failed_identity_attempts_non_negative",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -52,6 +56,16 @@ class ExamInvitation(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    failed_identity_attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+    identity_locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     candidate: Mapped["Candidate"] = relationship(back_populates="invitations")
     exam: Mapped["Exam"] = relationship(back_populates="invitations")
