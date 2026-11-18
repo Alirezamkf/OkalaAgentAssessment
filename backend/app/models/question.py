@@ -9,6 +9,7 @@ from app.database.base import Base
 
 if TYPE_CHECKING:
     from app.models.exam import Exam
+    from app.models.question_option import QuestionOption
 
 
 class Question(Base):
@@ -36,3 +37,4 @@ class Question(Base):
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     exam: Mapped["Exam"] = relationship(back_populates="questions")
+    options: Mapped[list["QuestionOption"]] = relationship(back_populates="question")
