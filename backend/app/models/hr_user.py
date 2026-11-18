@@ -26,6 +26,14 @@ class HRUser(Base):
     username: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     # Only the hash is stored so the raw password is not kept in the database.
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Employee's given name.
+    first_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Employee's family name.
+    last_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Employee's job title or organizational position.
+    position: Mapped[str] = mapped_column(String(150), nullable=False)
+    # External path or identifier for the profile image; image bytes are not stored here.
+    profile_image_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     hr_decided_attempts: Mapped[list["AssessmentAttempt"]] = relationship(
         back_populates="hr_decided_by",
