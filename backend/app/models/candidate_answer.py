@@ -24,6 +24,11 @@ class CandidateAnswer(Base):
     __tablename__ = "candidate_answers"
     __table_args__ = (
         ForeignKeyConstraint(
+            ["attempt_id", "exam_question_id"],
+            ["attempt_question_orders.attempt_id", "attempt_question_orders.exam_question_id"],
+            name="fk_candidate_answers_attempt_question_order",
+        ),
+        ForeignKeyConstraint(
             ["selected_option_id", "exam_question_id"],
             ["exam_question_options.id", "exam_question_options.exam_question_id"],
             name="fk_candidate_answers_selected_option_exam_question",

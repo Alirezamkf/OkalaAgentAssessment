@@ -32,6 +32,10 @@ class ExamInvitationQuestion(Base):
             "exam_question_id",
             name="uq_invitation_questions_invitation_question",
         ),
+        UniqueConstraint(
+            "exam_question_id",
+            name="uq_invitation_questions_exam_question",
+        ),
         Index("ix_invitation_questions_exam_question_id", "exam_question_id"),
     )
 
