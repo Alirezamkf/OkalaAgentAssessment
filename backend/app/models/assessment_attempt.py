@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.candidate import Candidate
     from app.models.exam import Exam
     from app.models.exam_invitation import ExamInvitation
+    from app.models.recording_metadata import RecordingMetadata
 
 
 class AttemptStatus(str, Enum):
@@ -68,3 +69,4 @@ class AssessmentAttempt(Base):
     )
     answers: Mapped[list["CandidateAnswer"]] = relationship(back_populates="attempt")
     events: Mapped[list["AttemptEvent"]] = relationship(back_populates="attempt")
+    recordings: Mapped[list["RecordingMetadata"]] = relationship(back_populates="attempt")

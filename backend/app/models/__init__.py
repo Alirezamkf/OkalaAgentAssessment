@@ -9,6 +9,7 @@ from app.models.exam_invitation import ExamInvitation, InvitationStatus
 from app.models.hr_user import HRUser
 from app.models.question import Question
 from app.models.question_option import QuestionOption
+from app.models.recording_metadata import RecordingMetadata
 
 __all__ = [
     "Candidate",
@@ -23,4 +24,5 @@ __all__ = [
     "InvitationStatus",
     "Question",
     "QuestionOption",
+    "RecordingMetadata",
 ]
