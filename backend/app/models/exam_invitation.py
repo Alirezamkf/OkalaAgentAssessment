@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base
 
 if TYPE_CHECKING:
+    from app.models.candidate_consent import CandidateConsent
     from app.models.assessment_attempt import AssessmentAttempt
     from app.models.exam_invitation_question import ExamInvitationQuestion
     from app.models.candidate import Candidate
@@ -63,3 +64,4 @@ class ExamInvitation(Base):
         back_populates="invitation",
         overlaps="question",
     )
+    consents: Mapped[list["CandidateConsent"]] = relationship(back_populates="exam_invitation")
