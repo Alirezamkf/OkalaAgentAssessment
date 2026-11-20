@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CheckConstraint, String
+from sqlalchemy import BigInteger, CheckConstraint, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -21,14 +21,15 @@ class Candidate(Base):
 
     __tablename__ = "candidates"
     __table_args__ = (
-        CheckConstraint(
-            "email IS NOT NULL OR phone IS NOT NULL",
-            name="ck_candidates_contact_method",
-        ),
+        CheckConstraint("length(trim(first_name)) >= 1", name="ck_candidates_first_name_not_empty"),
+        CheckConstraint("length(trim(last_name)) >= 1", name="ck_candidates_last_name_not_empty"),
+        Index("ix_candidates_email", "email"),
+        Index("ix_candidates_phone", "phone"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    first_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
