@@ -12,11 +12,10 @@ from app.models.exam_question import ExamQuestion
 from app.models.exam_question_option import ExamQuestionOption
 from app.models.exam_invitation import ExamInvitation, InvitationStatus
 from app.models.exam_invitation_question import ExamInvitationQuestion
+from app.models.exam_template import ExamTemplate
+from app.models.exam_template_question import ExamTemplateQuestion
+from app.models.exam_template_question_option import ExamTemplateQuestionOption
 from app.models.hr_user import HRUser
-from app.models.question import Question
-from app.models.question_option import QuestionOption
-from app.models.question_set import QuestionSet
-from app.models.question_set_item import QuestionSetItem
 from app.models.recording_metadata import RecordingMetadata
 
 __all__ = [
@@ -38,10 +37,9 @@ __all__ = [
     "ExamQuestion",
     "ExamQuestionOption",
     "HRUser",
+    "ExamTemplate",
+    "ExamTemplateQuestion",
+    "ExamTemplateQuestionOption",
     "InvitationStatus",
-    "Question",
-    "QuestionOption",
-    "QuestionSet",
-    "QuestionSetItem",
     "RecordingMetadata",
 ]

@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Integer
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.assessment_attempt import AssessmentAttempt
     from app.models.exam_question import ExamQuestion
     from app.models.exam_invitation import ExamInvitation
+    from app.models.exam_template import ExamTemplate
 
 
 class ExamStatus(str, Enum):
@@ -34,6 +35,7 @@ class Exam(Base):
 
     __tablename__ = "exams"
     __table_args__ = (
+        Index("ix_exams_exam_template_id", "exam_template_id"),
         CheckConstraint(
             "duration_minutes >= 20 AND duration_minutes <= 25",
             name="ck_exams_duration_minutes_range",
@@ -45,6 +47,12 @@ class Exam(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    exam_template_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("exam_templates.id"),
+        nullable=True,
+    )
     # The status is restricted to one of the three defined stages, and every exam starts at Created.
     status: Mapped[ExamStatus] = mapped_column(
         SAEnum(ExamStatus, name="exam_status", native_enum=False),
@@ -63,6 +71,7 @@ class Exam(Base):
         nullable=False,
     )
 
+    exam_template: Mapped["ExamTemplate | None"] = relationship(back_populates="exams")
     exam_questions: Mapped[list["ExamQuestion"]] = relationship(
         back_populates="exam",
         cascade="all, delete-orphan",
