@@ -3,9 +3,12 @@
 from dataclasses import dataclass
 from typing import Literal
 
+import phonenumbers
+from phonenumbers import PhoneNumberFormat
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.candidate import Candidate
 
 
@@ -36,17 +39,52 @@ def normalize_email(value: str | None) -> str | None:
     return normalized or None
 
 
-def normalize_phone(value: str | None) -> str | None:
-    """Normalize a phone conservatively without assuming a country code."""
+class InvalidPhoneNumberError(ValueError):
+    """Raised when a supplied phone number cannot be canonicalized safely."""
+
+
+_DEFAULT_REGION = object()
+
+
+def normalize_phone(
+    value: str | None,
+    region: str | None | object = _DEFAULT_REGION,
+) -> str | None:
+    """Canonicalize a valid phone number to E.164 using an explicit or configured region."""
 
     if value is None:
         return None
-    digits = "".join(character for character in value if character.isdigit())
-    if digits.startswith("00"):
-        digits = digits[2:]
-    if len(digits) == 11 and digits.startswith("0"):
-        digits = digits[1:]
-    return digits or None
+
+    stripped = value.strip()
+    if not stripped:
+        return None
+
+    if region is _DEFAULT_REGION:
+        region = settings.candidate_phone_region
+
+    if region is not None:
+        region = str(region).upper()
+        if region not in phonenumbers.SUPPORTED_REGIONS:
+            raise InvalidPhoneNumberError("Invalid configured phone region")
+
+    try:
+        parsed = phonenumbers.parse(stripped, region if isinstance(region, str) else None)
+    except phonenumbers.NumberParseException as error:
+        raise InvalidPhoneNumberError("Invalid phone number") from error
+
+    if not phonenumbers.is_possible_number(parsed) or not phonenumbers.is_valid_number(parsed):
+        raise InvalidPhoneNumberError("Invalid phone number")
+
+    return phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
+
+
+def is_anonymized_candidate(candidate: Candidate) -> bool:
+    """Identify retention-anonymized candidates by the approved literal names."""
+
+    return (
+        normalize_name(candidate.first_name) == "deleted"
+        and normalize_name(candidate.last_name) == "deleted"
+    )
 
 
 def names_match(candidate: Candidate, first_name: str, last_name: str) -> bool:
@@ -83,18 +121,26 @@ def resolve_candidate(
     if email is None and phone is None:
         raise ValueError("at least one of email or phone is required")
 
-    candidates = list(db.scalars(select(Candidate)).all())
+    candidates = [
+        candidate
+        for candidate in db.scalars(select(Candidate)).all()
+        if not is_anonymized_candidate(candidate)
+    ]
 
     email_matches = [
         candidate
         for candidate in candidates
         if email is not None and normalize_email(candidate.email) == email
     ]
-    phone_matches = [
-        candidate
-        for candidate in candidates
-        if phone is not None and normalize_phone(candidate.phone) == phone
-    ]
+    phone_matches: list[Candidate] = []
+    if phone is not None:
+        for candidate in candidates:
+            try:
+                candidate_phone = normalize_phone(candidate.phone)
+            except InvalidPhoneNumberError:
+                continue
+            if candidate_phone == phone:
+                phone_matches.append(candidate)
 
     if len(email_matches) > 1 or len(phone_matches) > 1:
         return CandidateMatch(

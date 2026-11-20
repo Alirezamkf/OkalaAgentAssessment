@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.models.candidate import Candidate
+from app.schemas.candidate import CandidateRegistrationInput
 from app.services.candidate_identity import (
     anonymize_candidate,
     get_or_create_candidate,
@@ -70,7 +71,7 @@ def test_existing_candidate_is_reused_and_contact_can_change() -> None:
         )
         assert updated.id == original_id
         assert updated.email == "new-negin@example.com"
-        assert updated.phone == "9121112233"
+        assert updated.phone == "+989121112233"
         assert db.query(Candidate).count() == 1
     finally:
         db.close()
@@ -159,5 +160,87 @@ def test_anonymization_clears_pii_without_deleting_candidate() -> None:
 
 
 def test_phone_normalization_is_conservative() -> None:
-    assert normalize_phone("+98 912 111 2233") == "989121112233"
-    assert normalize_phone("0912-111-2233") == "9121112233"
+    assert normalize_phone("+98 912 111 2233") == "+989121112233"
+    assert normalize_phone("0912-111-2233") == "+989121112233"
+
+
+def test_local_and_international_numbers_are_canonical_equivalent() -> None:
+    local = normalize_phone("09121234567")
+    international = normalize_phone("+989121234567")
+    assert local == international == "+989121234567"
+
+
+def test_international_number_normalizes_without_region() -> None:
+    assert normalize_phone("+98 (912) 123-4567", region=None) == "+989121234567"
+
+
+def test_ambiguous_number_without_region_is_not_guessed() -> None:
+    try:
+        normalize_phone("9121234567", region=None)
+        raise AssertionError("Ambiguous number was guessed")
+    except ValueError:
+        pass
+
+
+def test_invalid_phone_is_rejected() -> None:
+    try:
+        normalize_phone("not-a-phone")
+        raise AssertionError("Invalid phone was accepted")
+    except ValueError:
+        pass
+
+
+def test_schema_normalizes_phone_before_storage_contract() -> None:
+    registration = CandidateRegistrationInput(
+        first_name="Ali",
+        last_name="Rezayi",
+        phone="09121234567",
+    )
+    assert registration.phone == "+989121234567"
+
+
+def test_repeat_with_different_phone_format_reuses_candidate() -> None:
+    engine, db = create_session()
+    try:
+        original = get_or_create_candidate(
+            db,
+            first_name="Farhad",
+            last_name="Moradi",
+            phone="09121234567",
+        )
+        repeated = get_or_create_candidate(
+            db,
+            first_name="Farhad",
+            last_name="Moradi",
+            phone="+989121234567",
+        )
+        assert repeated.id == original.id
+        assert db.query(Candidate).count() == 1
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_anonymized_candidate_is_not_reused() -> None:
+    engine, db = create_session()
+    try:
+        candidate = get_or_create_candidate(
+            db,
+            first_name="Leila",
+            last_name="Shah",
+            phone="09121234567",
+        )
+        anonymize_candidate(candidate)
+        db.flush()
+
+        replacement = get_or_create_candidate(
+            db,
+            first_name="Leila",
+            last_name="Shah",
+            phone="+989121234567",
+        )
+        assert replacement.id != candidate.id
+        assert db.query(Candidate).count() == 2
+    finally:
+        db.close()
+        engine.dispose()
