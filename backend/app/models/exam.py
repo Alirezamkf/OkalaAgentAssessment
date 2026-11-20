@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -67,6 +67,7 @@ class Exam(Base):
         ),
         nullable=False,
         default=ExamStatus.CREATED,
+        server_default=text("'Created'"),
     )
     # Exam duration is measured in minutes and restricted to the approved range of 20 to 25 minutes.
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=25)

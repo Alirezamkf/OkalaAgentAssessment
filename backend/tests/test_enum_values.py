@@ -49,6 +49,24 @@ def test_hr_decision_uses_values_and_matches_constraint() -> None:
     assert "hr_decision <> 'Unset'" in sql
 
 
+def test_initial_status_server_defaults_match_enum_values() -> None:
+    exam_status = Exam.__table__.c.status
+    invitation_status = ExamInvitation.__table__.c.status
+    attempt_status = AssessmentAttempt.__table__.c.status
+
+    assert exam_status.nullable is False
+    assert str(exam_status.server_default.arg) == "'Created'"
+    assert exam_status.default.arg is ExamStatus.CREATED
+
+    assert invitation_status.nullable is False
+    assert str(invitation_status.server_default.arg) == "'Pending'"
+    assert invitation_status.default.arg is InvitationStatus.PENDING
+
+    assert attempt_status.nullable is False
+    assert str(attempt_status.server_default.arg) == "'Not Started'"
+    assert attempt_status.default.arg is AttemptStatus.NOT_STARTED
+
+
 def test_attempt_event_type_uses_all_approved_values() -> None:
     expected = [
         "TabHidden",

@@ -58,6 +58,7 @@ class ExamInvitation(Base):
         ),
         nullable=False,
         default=InvitationStatus.PENDING,
+        server_default=text("'Pending'"),
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

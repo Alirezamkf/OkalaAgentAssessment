@@ -81,6 +81,7 @@ class AssessmentAttempt(Base):
         ),
         nullable=False,
         default=AttemptStatus.NOT_STARTED,
+        server_default=text("'Not Started'"),
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
