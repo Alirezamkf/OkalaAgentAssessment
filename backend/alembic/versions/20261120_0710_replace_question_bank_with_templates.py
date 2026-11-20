@@ -209,7 +209,6 @@ def upgrade() -> None:
     )
     op.create_index("ix_assessment_attempts_exam_id", "assessment_attempts", ["exam_id"], unique=False)
     op.create_index("ix_assessment_attempts_candidate_id", "assessment_attempts", ["candidate_id"], unique=False)
-    op.create_index("ix_assessment_attempts_invitation_id", "assessment_attempts", ["exam_invitation_id"], unique=True)
     op.create_index("ix_assessment_attempts_status", "assessment_attempts", ["status"], unique=False)
 
     op.create_table(
@@ -343,7 +342,6 @@ def downgrade() -> None:
     op.drop_table("attempt_question_orders")
 
     op.drop_index("ix_assessment_attempts_status", table_name="assessment_attempts")
-    op.drop_index("ix_assessment_attempts_invitation_id", table_name="assessment_attempts")
     op.drop_index("ix_assessment_attempts_candidate_id", table_name="assessment_attempts")
     op.drop_index("ix_assessment_attempts_exam_id", table_name="assessment_attempts")
     op.drop_table("assessment_attempts")

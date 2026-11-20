@@ -53,7 +53,6 @@ class AssessmentAttempt(Base):
         ),
         Index("ix_assessment_attempts_exam_id", "exam_id"),
         Index("ix_assessment_attempts_candidate_id", "candidate_id"),
-        Index("ix_assessment_attempts_invitation_id", "exam_invitation_id", unique=True),
         Index("ix_assessment_attempts_status", "status"),
         UniqueConstraint("exam_invitation_id", name="uq_assessment_attempts_invitation_id"),
         UniqueConstraint("id", "exam_invitation_id", name="uq_assessment_attempts_id_invitation"),
