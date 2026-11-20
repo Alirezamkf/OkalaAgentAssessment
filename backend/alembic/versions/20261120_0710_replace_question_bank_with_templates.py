@@ -218,6 +218,7 @@ def upgrade() -> None:
         sa.Column("attempt_id", sa.BigInteger(), nullable=False),
         sa.Column("exam_invitation_id", sa.BigInteger(), nullable=False),
         sa.Column("exam_question_id", sa.BigInteger(), nullable=False),
+        sa.Column("position", sa.Integer(), nullable=False),
         sa.CheckConstraint("position >= 1", name="ck_attempt_question_orders_position_positive"),
         sa.ForeignKeyConstraint(["attempt_id", "exam_invitation_id"], ["assessment_attempts.id", "assessment_attempts.exam_invitation_id"], name="fk_attempt_question_orders_attempt_invitation"),
         sa.ForeignKeyConstraint(["exam_invitation_id", "exam_question_id"], ["exam_invitation_questions.exam_invitation_id", "exam_invitation_questions.exam_question_id"], name="fk_attempt_question_orders_selected_exam_question"),
@@ -225,7 +226,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("attempt_id", "position", name="uq_attempt_question_orders_attempt_position"),
         sa.UniqueConstraint("attempt_id", "exam_question_id", name="uq_attempt_question_orders_attempt_question"),
-        sa.Column("position", sa.Integer(), nullable=False),
     )
     op.create_index("ix_attempt_question_orders_exam_question_id", "attempt_question_orders", ["exam_question_id"], unique=False)
 
