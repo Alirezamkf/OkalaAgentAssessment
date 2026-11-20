@@ -43,7 +43,8 @@ class ExamTemplate(Base):
         onupdate=func.now(),
     )
 
-    creator: Mapped["HRUser"] = relationship(back_populates="created_exam_templates")
+    # The template links to its HR creator directly without exposing a reverse collection.
+    creator: Mapped["HRUser"] = relationship()
     questions: Mapped[list["ExamTemplateQuestion"]] = relationship(
         back_populates="exam_template",
         cascade="all, delete-orphan",

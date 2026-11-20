@@ -21,7 +21,9 @@ def test_reusable_template_tables_are_registered() -> None:
 
 
 def test_template_relationships_and_exam_reference() -> None:
-    assert "created_exam_templates" in {prop.key for prop in HRUser.__mapper__.relationships}
+    assert "created_exam_templates" not in {prop.key for prop in HRUser.__mapper__.relationships}
+    assert ExamTemplate.__mapper__.relationships.creator.back_populates is None
+    assert ExamTemplate.__table__.c.created_by_hr_user_id.nullable is False
 
     template = ExamTemplate.__mapper__
     question = ExamTemplateQuestion.__mapper__
