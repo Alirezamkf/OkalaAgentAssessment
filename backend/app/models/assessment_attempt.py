@@ -73,7 +73,12 @@ class AssessmentAttempt(Base):
     candidate_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("candidates.id"), nullable=False)
     exam_invitation_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     status: Mapped[AttemptStatus] = mapped_column(
-        SAEnum(AttemptStatus, name="attempt_status", native_enum=False),
+        SAEnum(
+            AttemptStatus,
+            name="attempt_status",
+            native_enum=False,
+            values_callable=lambda enum_type: [member.value for member in enum_type],
+        ),
         nullable=False,
         default=AttemptStatus.NOT_STARTED,
     )
@@ -85,7 +90,12 @@ class AssessmentAttempt(Base):
     official_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     max_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     hr_decision: Mapped[HRDecision] = mapped_column(
-        SAEnum(HRDecision, name="hr_decision", native_enum=False),
+        SAEnum(
+            HRDecision,
+            name="hr_decision",
+            native_enum=False,
+            values_callable=lambda enum_type: [member.value for member in enum_type],
+        ),
         nullable=False,
         default=HRDecision.UNSET,
         server_default=text("'Unset'"),

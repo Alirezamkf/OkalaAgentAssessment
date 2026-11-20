@@ -56,6 +56,7 @@ class AttemptEvent(Base):
             name="attempt_event_type",
             native_enum=True,
             validate_strings=True,
+            values_callable=lambda enum_type: [member.value for member in enum_type],
         ),
         nullable=False,
     )

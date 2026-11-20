@@ -59,7 +59,12 @@ class Exam(Base):
     )
     # The status is restricted to one of the three defined stages, and every exam starts at Created.
     status: Mapped[ExamStatus] = mapped_column(
-        SAEnum(ExamStatus, name="exam_status", native_enum=False),
+        SAEnum(
+            ExamStatus,
+            name="exam_status",
+            native_enum=False,
+            values_callable=lambda enum_type: [member.value for member in enum_type],
+        ),
         nullable=False,
         default=ExamStatus.CREATED,
     )

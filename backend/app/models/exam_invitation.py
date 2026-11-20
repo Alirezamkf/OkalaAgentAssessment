@@ -50,7 +50,12 @@ class ExamInvitation(Base):
     exam_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("exams.id"), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[InvitationStatus] = mapped_column(
-        SAEnum(InvitationStatus, name="invitation_status", native_enum=False),
+        SAEnum(
+            InvitationStatus,
+            name="invitation_status",
+            native_enum=False,
+            values_callable=lambda enum_type: [member.value for member in enum_type],
+        ),
         nullable=False,
         default=InvitationStatus.PENDING,
     )
