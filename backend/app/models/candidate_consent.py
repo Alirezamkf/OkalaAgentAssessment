@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -29,10 +29,12 @@ class CandidateConsent(Base):
         ForeignKey("exam_invitations.id"),
         nullable=False,
     )
+    # A consent row's existence means acceptance; no consent text or version is stored.
     accepted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
     )
 
     exam_invitation: Mapped["ExamInvitation"] = relationship(

@@ -173,9 +173,9 @@ def get_or_create_candidate(
 
 
 def anonymize_candidate(candidate: Candidate) -> None:
-    """Clear identifying contact values and replace names with placeholders."""
+    """Anonymize PII only when the retention caller has verified reuse is no longer required."""
 
-    candidate.first_name = "Anonymized"
-    candidate.last_name = "Candidate"
+    candidate.first_name = "Deleted"
+    candidate.last_name = "Deleted"
     candidate.email = None
     candidate.phone = None

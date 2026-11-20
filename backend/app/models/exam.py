@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, String
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.exam_question import ExamQuestion
     from app.models.exam_invitation import ExamInvitation
     from app.models.exam_template import ExamTemplate
+    from app.models.hr_user import HRUser
 
 
 class ExamStatus(str, Enum):
@@ -35,6 +36,8 @@ class Exam(Base):
 
     __tablename__ = "exams"
     __table_args__ = (
+        UniqueConstraint("name", name="uq_exams_name"),
+        CheckConstraint("length(trim(name)) >= 1", name="ck_exams_name_not_empty"),
         Index("ix_exams_exam_template_id", "exam_template_id"),
         CheckConstraint(
             "duration_minutes >= 20 AND duration_minutes <= 25",
@@ -47,7 +50,8 @@ class Exam(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # HR explicitly chooses this globally unique name; no backend default or suffix is generated.
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
     exam_template_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("exam_templates.id"),
@@ -72,6 +76,7 @@ class Exam(Base):
     )
 
     exam_template: Mapped["ExamTemplate | None"] = relationship(back_populates="exams")
+    creator: Mapped["HRUser"] = relationship(back_populates="created_exams")
     exam_questions: Mapped[list["ExamQuestion"]] = relationship(
         back_populates="exam",
         cascade="all, delete-orphan",

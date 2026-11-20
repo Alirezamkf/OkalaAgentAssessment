@@ -148,8 +148,8 @@ def test_anonymization_clears_pii_without_deleting_candidate() -> None:
         db.flush()
 
         assert candidate.id == candidate_id
-        assert candidate.first_name == "Anonymized"
-        assert candidate.last_name == "Candidate"
+        assert candidate.first_name == "Deleted"
+        assert candidate.last_name == "Deleted"
         assert candidate.email is None
         assert candidate.phone is None
         assert db.query(Candidate).count() == 1

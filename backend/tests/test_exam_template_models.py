@@ -33,7 +33,7 @@ def test_template_relationships_and_exam_reference() -> None:
     assert option.relationships.exam_template_question.mapper.class_ is ExamTemplateQuestion
 
     assert Exam.__table__.c.exam_template_id.nullable is True
-    assert Exam.__table__.c.name.nullable is True
+    assert Exam.__table__.c.name.nullable is False
 
 
 def test_template_constraints_preserve_order_and_one_correct_option() -> None:

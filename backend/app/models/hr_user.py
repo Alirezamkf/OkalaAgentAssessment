@@ -9,6 +9,7 @@ from app.database.base import Base
 
 if TYPE_CHECKING:
     from app.models.assessment_attempt import AssessmentAttempt
+    from app.models.exam import Exam
     from app.models.exam_template import ExamTemplate
 
 
@@ -41,5 +42,8 @@ class HRUser(Base):
         foreign_keys="AssessmentAttempt.hr_decided_by_id",
     )
     created_exam_templates: Mapped[list["ExamTemplate"]] = relationship(
+        back_populates="creator",
+    )
+    created_exams: Mapped[list["Exam"]] = relationship(
         back_populates="creator",
     )
