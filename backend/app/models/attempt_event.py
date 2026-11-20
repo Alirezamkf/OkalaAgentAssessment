@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, func
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -67,6 +67,11 @@ class AttemptEvent(Base):
     )
     # Duration is independent of occurred_at and remains NULL when not measurable.
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    event_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    event_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
 
     attempt: Mapped["AssessmentAttempt"] = relationship(back_populates="events")
