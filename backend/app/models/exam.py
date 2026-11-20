@@ -76,7 +76,8 @@ class Exam(Base):
     )
 
     exam_template: Mapped["ExamTemplate | None"] = relationship(back_populates="exams")
-    creator: Mapped["HRUser"] = relationship(back_populates="created_exams")
+    # The creator is exposed only from Exam; HRUser has no reverse Exam relationship.
+    creator: Mapped["HRUser"] = relationship()
     exam_questions: Mapped[list["ExamQuestion"]] = relationship(
         back_populates="exam",
         cascade="all, delete-orphan",

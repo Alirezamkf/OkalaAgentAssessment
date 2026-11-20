@@ -45,11 +45,18 @@ def test_exam_name_is_required_globally_unique_and_nonempty() -> None:
     )
 
 
-def test_exam_hr_relationship_is_bidirectional() -> None:
+def test_exam_hr_relationship_is_one_way() -> None:
     exam_relationships = {relationship.key for relationship in Exam.__mapper__.relationships}
     hr_relationships = {relationship.key for relationship in HRUser.__mapper__.relationships}
+
     assert "creator" in exam_relationships
-    assert "created_exams" in hr_relationships
+    assert Exam.__mapper__.relationships.creator.back_populates is None
+    assert "created_exams" not in hr_relationships
+    assert Exam.__table__.c.created_by_hr_user_id.nullable is False
+    assert any(
+        "hr_users.id" in str(foreign_key)
+        for foreign_key in Exam.__table__.c.created_by_hr_user_id.foreign_keys
+    )
 
 
 def test_unique_base_name_is_unchanged() -> None:
