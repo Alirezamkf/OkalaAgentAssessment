@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, String
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -29,6 +29,15 @@ class RecordingMetadata(Base):
         CheckConstraint(
             "ended_at IS NULL OR started_at IS NULL OR ended_at >= started_at",
             name="ck_recording_metadata_timestamp_order",
+        ),
+        CheckConstraint(
+            "source IN ('webcam', 'screen')",
+            name="ck_recording_metadata_source_allowed",
+        ),
+        UniqueConstraint(
+            "attempt_id",
+            "source",
+            name="uq_recording_metadata_attempt_source",
         ),
         Index("ix_recording_metadata_attempt_id", "attempt_id"),
         Index("ix_recording_metadata_source", "source"),

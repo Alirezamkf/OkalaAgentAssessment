@@ -1,10 +1,11 @@
 """ORM model for one candidate's participation in an invited exam."""
 
 from datetime import datetime
+from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, ForeignKeyConstraint, Index, Integer, UniqueConstraint, func, text
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -81,6 +82,8 @@ class AssessmentAttempt(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     current_question_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    official_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    max_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     hr_decision: Mapped[HRDecision] = mapped_column(
         SAEnum(HRDecision, name="hr_decision", native_enum=False),
         nullable=False,
