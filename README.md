@@ -33,11 +33,24 @@ docker-compose*.yml       Development and production service orchestration
 
 ## Environment Configuration
 
-Copy `.env.example` to `.env` and replace the local PostgreSQL password before starting the stack:
+Copy `.env.example` to `.env` and replace `CHANGE_ME` with a local PostgreSQL password:
 
 ```powershell
 Copy-Item .env.example .env
 ```
+
+Keep `.env` local and never commit it. Docker Compose uses `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` for both PostgreSQL and the Backend `DATABASE_URL`. Each developer should use a separate local `.env` and may therefore have an independent local database volume and credentials.
+
+For database URL compatibility, use URL-safe characters in the local PostgreSQL password because the password is placed in the Compose-generated SQLAlchemy URL. Characters such as `/`, `@`, `#`, `?`, and `%` can require URL encoding.
+
+Start the stack and apply the shared Alembic migrations:
+
+```powershell
+docker compose up --build
+docker compose exec backend alembic upgrade head
+```
+
+A developer who already has a running volume can use the same migrations to update its local schema; do not share or delete another developer's volume.
 
 Do not commit `.env` or real secrets.
 
