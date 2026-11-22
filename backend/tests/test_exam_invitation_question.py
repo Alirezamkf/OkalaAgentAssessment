@@ -119,6 +119,26 @@ def create_invitation(
     return invitation
 
 
+def test_candidate_can_have_independent_invitations_for_multiple_exams(db: Session) -> None:
+    hr_user = create_hr_user(db)
+    first_exam = create_exam(db, hr_user, "Exam One", exam_id=1)
+    second_exam = create_exam(db, hr_user, "Exam Two", exam_id=2)
+    candidate = create_candidate(db)
+
+    first_invitation = create_invitation(db, first_exam, candidate, "token-first", invitation_id=1)
+    second_invitation = create_invitation(db, second_exam, candidate, "token-second", invitation_id=2)
+    db.commit()
+
+    stored_candidate = db.get(Candidate, candidate.id)
+    assert stored_candidate is not None
+    assert {invitation.id for invitation in stored_candidate.invitations} == {
+        first_invitation.id,
+        second_invitation.id,
+    }
+    assert first_invitation.candidate_id == second_invitation.candidate_id == candidate.id
+    assert first_invitation.exam_id != second_invitation.exam_id
+
+
 def test_valid_question_can_be_selected_for_exam_invitation(db: Session) -> None:
     hr_user = create_hr_user(db)
     exam = create_exam(db, hr_user, "Exam One")
