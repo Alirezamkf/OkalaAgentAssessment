@@ -153,6 +153,7 @@ def create_exam_from_template(
         ).all()
 
         for source_question in source_questions:
+            validate_template_question_options(source_question.options)
             copied_question = ExamQuestion(
                 exam_id=exam.id,
                 text=source_question.question_text,
@@ -173,3 +174,14 @@ def create_exam_from_template(
         db.flush()
 
     return exam
+
+
+def validate_template_question_options(options) -> None:
+    """Enforce answer option rules before copying a template question into an exam."""
+
+    if not 2 <= len(options) <= 6:
+        raise ValueError("A template question must have between 2 and 6 options")
+    if any(not option.option_text or not option.option_text.strip() for option in options):
+        raise ValueError("Template question options must have non-empty text")
+    if sum(option.is_correct for option in options) != 1:
+        raise ValueError("A template question must have exactly one correct option")

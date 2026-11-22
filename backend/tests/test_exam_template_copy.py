@@ -152,6 +152,13 @@ def create_template(db: Session) -> tuple[HRUser, ExamTemplate]:
             position=1,
             is_correct=True,
         ),
+        ExamTemplateQuestionOption(
+            id=4,
+            exam_template_question_id=second_question.id,
+            option_text="No",
+            position=2,
+            is_correct=False,
+        ),
     ])
     db.flush()
     return hr_user, template
