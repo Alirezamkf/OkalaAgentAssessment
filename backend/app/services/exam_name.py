@@ -8,6 +8,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.exam import Exam
+from app.models.exam_question import ExamQuestion
+from app.models.exam_question_option import ExamQuestionOption
+from app.models.exam_template import ExamTemplate
+from app.models.exam_template_question import ExamTemplateQuestion
 
 
 ExamT = TypeVar("ExamT", bound=Exam)
@@ -110,3 +114,62 @@ def create_exam_with_unique_name(
     raise ExamNameConflictError(
         f"Unable to allocate an available name for '{base_name}' after {max_retries} attempts"
     )
+
+
+def create_exam_from_template(
+    db: Session,
+    *,
+    name: str,
+    duration_minutes: int,
+    available_from,
+    available_until,
+    created_by_hr_user_id: int,
+    template: ExamTemplate | int,
+) -> Exam:
+    """Create an exam and copy its template questions/options in one transaction."""
+
+    template_id = template.id if isinstance(template, ExamTemplate) else template
+    source_template = db.get(ExamTemplate, template_id)
+    if source_template is None:
+        raise ValueError("Exam template does not exist")
+
+    def exam_factory(final_name: str) -> Exam:
+        return Exam(
+            name=final_name,
+            duration_minutes=duration_minutes,
+            available_from=available_from,
+            available_until=available_until,
+            created_by_hr_user_id=created_by_hr_user_id,
+            exam_template_id=template_id,
+        )
+
+    with db.begin_nested():
+        exam = create_exam_with_unique_name(db, name, exam_factory)
+
+        source_questions = db.scalars(
+            select(ExamTemplateQuestion)
+            .where(ExamTemplateQuestion.exam_template_id == template_id)
+            .order_by(ExamTemplateQuestion.position)
+        ).all()
+
+        for source_question in source_questions:
+            copied_question = ExamQuestion(
+                exam_id=exam.id,
+                text=source_question.question_text,
+                score=source_question.score,
+                image_reference=source_question.image_reference,
+            )
+            db.add(copied_question)
+            db.flush()
+
+            for source_option in sorted(source_question.options, key=lambda option: option.position):
+                db.add(ExamQuestionOption(
+                    exam_question_id=copied_question.id,
+                    text=source_option.option_text,
+                    position=source_option.position,
+                    is_correct=source_option.is_correct,
+                ))
+
+        db.flush()
+
+    return exam
