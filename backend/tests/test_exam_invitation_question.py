@@ -10,11 +10,14 @@ from sqlalchemy.orm import Session
 
 from app.database.base import Base
 from app.models.assessment_attempt import AssessmentAttempt
+from app.models.attempt_question_order import AttemptQuestionOrder
 from app.models.candidate import Candidate
+from app.models.candidate_answer import CandidateAnswer
 from app.models.exam import Exam, ExamStatus
 from app.models.exam_invitation import ExamInvitation, InvitationStatus
 from app.models.exam_invitation_question import ExamInvitationQuestion
 from app.models.exam_question import ExamQuestion
+from app.models.exam_question_option import ExamQuestionOption
 from app.models.exam_template import ExamTemplate
 from app.models.hr_user import HRUser
 
@@ -35,9 +38,12 @@ def db():
         Candidate.__table__,
         Exam.__table__,
         ExamQuestion.__table__,
+        ExamQuestionOption.__table__,
         ExamInvitation.__table__,
         AssessmentAttempt.__table__,
         ExamInvitationQuestion.__table__,
+        AttemptQuestionOrder.__table__,
+        CandidateAnswer.__table__,
     ]
     Base.metadata.create_all(engine, tables=tables)
 
@@ -84,6 +90,42 @@ def create_question(session: Session, exam: Exam, text: str, question_id: int = 
     session.add(question)
     session.flush()
     return question
+
+
+def create_answer_order(
+    session: Session,
+    attempt: AssessmentAttempt,
+    invitation: ExamInvitation,
+    exam: Exam,
+    question: ExamQuestion,
+    *,
+    order_id: int = 1,
+    option_id: int = 1,
+) -> ExamQuestionOption:
+    session.flush()
+    session.add(ExamInvitationQuestion(
+        id=order_id,
+        exam_invitation_id=invitation.id,
+        exam_question_id=question.id,
+        exam_id=exam.id,
+    ))
+    session.flush()
+    session.add(AttemptQuestionOrder(
+        id=order_id,
+        attempt_id=attempt.id,
+        exam_invitation_id=invitation.id,
+        exam_question_id=question.id,
+        position=order_id,
+    ))
+    option = ExamQuestionOption(
+        id=option_id,
+        exam_question_id=question.id,
+        text="Answer option",
+        position=1,
+    )
+    session.add(option)
+    session.flush()
+    return option
 
 
 def create_candidate(session: Session, email: str = "candidate@example.com", candidate_id: int = 1) -> Candidate:
@@ -368,6 +410,98 @@ def test_same_question_can_be_selected_for_different_invitations(db: Session) ->
     db.commit()
 
     assert db.query(ExamInvitationQuestion).filter_by(exam_question_id=question.id).count() == 2
+
+
+def test_candidate_answer_requires_question_in_attempt_order(db: Session) -> None:
+    hr_user = create_hr_user(db)
+    exam = create_exam(db, hr_user, "Attempt Answer Exam")
+    candidate = create_candidate(db)
+    invitation = create_invitation(db, exam, candidate, "answer-order-token")
+    attempt = create_attempt(db, invitation)
+    assigned_question = create_question(db, exam, "Assigned question", question_id=1)
+    unassigned_question = create_question(db, exam, "Unassigned question", question_id=2)
+    create_answer_order(db, attempt, invitation, exam, assigned_question)
+    db.add(CandidateAnswer(
+        id=1,
+        attempt_id=attempt.id,
+        exam_question_id=unassigned_question.id,
+    ))
+
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
+
+
+def test_candidate_answer_option_must_belong_to_answered_question(db: Session) -> None:
+    hr_user = create_hr_user(db)
+    exam = create_exam(db, hr_user, "Attempt Option Exam")
+    candidate = create_candidate(db)
+    invitation = create_invitation(db, exam, candidate, "answer-option-token")
+    attempt = create_attempt(db, invitation)
+    first_question = create_question(db, exam, "First question", question_id=1)
+    second_question = create_question(db, exam, "Second question", question_id=2)
+    create_answer_order(db, attempt, invitation, exam, first_question, order_id=1, option_id=1)
+    other_option = ExamQuestionOption(
+        id=2,
+        exam_question_id=second_question.id,
+        text="Other question option",
+        position=1,
+    )
+    db.add(other_option)
+    db.flush()
+    db.add(CandidateAnswer(
+        id=1,
+        attempt_id=attempt.id,
+        exam_question_id=first_question.id,
+        selected_option_id=other_option.id,
+    ))
+
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
+
+
+def test_candidate_answer_is_unique_per_attempt_question(db: Session) -> None:
+    hr_user = create_hr_user(db)
+    exam = create_exam(db, hr_user, "Duplicate Answer Exam")
+    candidate = create_candidate(db)
+    invitation = create_invitation(db, exam, candidate, "duplicate-answer-token")
+    attempt = create_attempt(db, invitation)
+    question = create_question(db, exam, "Question", question_id=1)
+    option = create_answer_order(db, attempt, invitation, exam, question)
+    db.add(CandidateAnswer(
+        id=1,
+        attempt_id=attempt.id,
+        exam_question_id=question.id,
+        selected_option_id=option.id,
+    ))
+    db.flush()
+    db.add(CandidateAnswer(
+        id=2,
+        attempt_id=attempt.id,
+        exam_question_id=question.id,
+    ))
+
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
+
+
+def test_candidate_answer_can_be_saved_without_selected_option(db: Session) -> None:
+    hr_user = create_hr_user(db)
+    exam = create_exam(db, hr_user, "Unanswered Question Exam")
+    candidate = create_candidate(db)
+    invitation = create_invitation(db, exam, candidate, "unanswered-token")
+    attempt = create_attempt(db, invitation)
+    question = create_question(db, exam, "Unanswered question", question_id=1)
+    create_answer_order(db, attempt, invitation, exam, question)
+    answer = CandidateAnswer(id=1, attempt_id=attempt.id, exam_question_id=question.id)
+    db.add(answer)
+    db.commit()
+
+    persisted_answer = db.get(CandidateAnswer, answer.id)
+    assert persisted_answer is not None
+    assert persisted_answer.selected_option_id is None
 
 
 def test_question_from_another_exam_cannot_be_selected(db: Session) -> None:
