@@ -119,6 +119,25 @@ def create_invitation(
     return invitation
 
 
+def create_attempt(
+    session: Session,
+    invitation: ExamInvitation,
+    *,
+    attempt_id: int = 1,
+    candidate_id: int | None = None,
+    exam_id: int | None = None,
+) -> AssessmentAttempt:
+    attempt = AssessmentAttempt(
+        id=attempt_id,
+        exam_invitation_id=invitation.id,
+        candidate_id=invitation.candidate_id if candidate_id is None else candidate_id,
+        exam_id=invitation.exam_id if exam_id is None else exam_id,
+        deadline_at=datetime.now(timezone.utc) + timedelta(days=1),
+    )
+    session.add(attempt)
+    return attempt
+
+
 def test_candidate_can_have_independent_invitations_for_multiple_exams(db: Session) -> None:
     hr_user = create_hr_user(db)
     first_exam = create_exam(db, hr_user, "Exam One", exam_id=1)
@@ -137,6 +156,116 @@ def test_candidate_can_have_independent_invitations_for_multiple_exams(db: Sessi
     }
     assert first_invitation.candidate_id == second_invitation.candidate_id == candidate.id
     assert first_invitation.exam_id != second_invitation.exam_id
+
+
+def test_same_candidate_and_exam_can_have_independent_invitations_and_attempts(db: Session) -> None:
+    hr_user = create_hr_user(db)
+    exam = create_exam(db, hr_user, "Repeated Exam")
+    candidate = create_candidate(db)
+    first_invitation = create_invitation(db, exam, candidate, "first-token-hash")
+    first_invitation.status = InvitationStatus.ACCEPTED
+    second_invitation = create_invitation(
+        db, exam, candidate, "second-token-hash", invitation_id=2
+    )
+    first_attempt = create_attempt(db, first_invitation, attempt_id=1)
+    second_attempt = create_attempt(db, second_invitation, attempt_id=2)
+    db.commit()
+
+    assert first_invitation.id != second_invitation.id
+    assert first_invitation.token_hash != second_invitation.token_hash
+    assert first_invitation.status == InvitationStatus.ACCEPTED
+    assert second_invitation.status == InvitationStatus.PENDING
+    assert first_invitation.candidate is candidate and second_invitation.candidate is candidate
+    assert first_invitation.exam is exam and second_invitation.exam is exam
+    assert {invitation.id for invitation in candidate.invitations} == {
+        first_invitation.id,
+        second_invitation.id,
+    }
+    assert {invitation.id for invitation in exam.invitations} == {
+        first_invitation.id,
+        second_invitation.id,
+    }
+    assert first_invitation.attempt.id == first_attempt.id
+    assert second_invitation.attempt.id == second_attempt.id
+    assert first_attempt.id != second_attempt.id
+
+
+def test_duplicate_invitation_token_hash_is_rejected(db: Session) -> None:
+    hr_user = create_hr_user(db)
+    exam = create_exam(db, hr_user, "Token Exam")
+    candidate = create_candidate(db)
+    create_invitation(db, exam, candidate, "duplicate-token-hash")
+    db.commit()
+
+    db.add(ExamInvitation(
+        id=2,
+        candidate_id=candidate.id,
+        exam_id=exam.id,
+        token_hash="duplicate-token-hash",
+        created_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+    ))
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
+
+    assert db.query(ExamInvitation).count() == 1
+
+
+@pytest.mark.parametrize(
+    ("missing_column", "invalid_value"),
+    [
+        ("candidate_id", None),
+        ("exam_id", None),
+        ("candidate_id", 999),
+        ("exam_id", 999),
+    ],
+)
+def test_invitation_requires_existing_candidate_and_exam(
+    db: Session, missing_column: str, invalid_value: int | None
+) -> None:
+    hr_user = create_hr_user(db)
+    exam = create_exam(db, hr_user, "Required Parent Exam")
+    candidate = create_candidate(db)
+    values = {
+        "id": 1,
+        "candidate_id": candidate.id,
+        "exam_id": exam.id,
+        "token_hash": "required-parent-token",
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=1),
+    }
+    values[missing_column] = invalid_value
+    db.add(ExamInvitation(**values))
+
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
+
+
+@pytest.mark.parametrize("invalid_attempt", ["candidate", "exam", "duplicate"])
+def test_attempt_constraints_keep_attempts_bound_to_one_invitation(
+    db: Session, invalid_attempt: str
+) -> None:
+    hr_user = create_hr_user(db)
+    exam = create_exam(db, hr_user, "Attempt Exam")
+    candidate = create_candidate(db)
+    other_candidate = create_candidate(db, "other@example.com", candidate_id=2)
+    other_exam = create_exam(db, hr_user, "Other Attempt Exam", exam_id=2)
+    invitation = create_invitation(db, exam, candidate, "attempt-token-hash")
+
+    if invalid_attempt == "duplicate":
+        create_attempt(db, invitation, attempt_id=1)
+        db.flush()
+        create_attempt(db, invitation, attempt_id=2)
+    elif invalid_attempt == "candidate":
+        create_attempt(db, invitation, candidate_id=other_candidate.id)
+    else:
+        create_attempt(db, invitation, exam_id=other_exam.id)
+
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
 
 
 def test_valid_question_can_be_selected_for_exam_invitation(db: Session) -> None:
