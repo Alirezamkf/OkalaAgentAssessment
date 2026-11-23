@@ -1,6 +1,7 @@
 """Database behavior tests for exam invitation question selections."""
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import create_engine, delete, event
@@ -188,6 +189,30 @@ def test_same_candidate_and_exam_can_have_independent_invitations_and_attempts(d
     assert first_invitation.attempt.id == first_attempt.id
     assert second_invitation.attempt.id == second_attempt.id
     assert first_attempt.id != second_attempt.id
+
+
+def test_attempt_scores_preserve_null_zero_and_decimal_values(db: Session) -> None:
+    hr_user = create_hr_user(db)
+    exam = create_exam(db, hr_user, "Scored Exam")
+    candidate = create_candidate(db)
+    invitation = create_invitation(db, exam, candidate, "score-token-hash")
+    attempt = create_attempt(db, invitation)
+    db.commit()
+
+    stored_attempt = db.get(AssessmentAttempt, attempt.id)
+    assert stored_attempt is not None
+    assert stored_attempt.official_score is None
+    assert stored_attempt.max_score is None
+
+    stored_attempt.official_score = Decimal("0.00")
+    stored_attempt.max_score = Decimal("1234.56")
+    db.commit()
+    db.expire_all()
+
+    persisted_attempt = db.get(AssessmentAttempt, attempt.id)
+    assert persisted_attempt is not None
+    assert persisted_attempt.official_score == Decimal("0.00")
+    assert persisted_attempt.max_score == Decimal("1234.56")
 
 
 def test_duplicate_invitation_token_hash_is_rejected(db: Session) -> None:
