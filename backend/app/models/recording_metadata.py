@@ -13,6 +13,28 @@ if TYPE_CHECKING:
     from app.models.assessment_attempt import AssessmentAttempt
 
 
+class RecordingStatus(str, Enum):
+    """Approved lifecycle values for a recording source."""
+
+    PENDING = "Pending"
+    STARTING = "Starting"
+    RECORDING = "Recording"
+    INTERRUPTED = "Interrupted"
+    FAILED = "Failed"
+    COMPLETED = "Completed"
+
+    def can_transition_to(self, target: "RecordingStatus") -> bool:
+        transitions = {
+            RecordingStatus.PENDING: {RecordingStatus.STARTING},
+            RecordingStatus.STARTING: {RecordingStatus.RECORDING, RecordingStatus.FAILED},
+            RecordingStatus.RECORDING: {RecordingStatus.INTERRUPTED, RecordingStatus.COMPLETED, RecordingStatus.FAILED},
+            RecordingStatus.INTERRUPTED: {RecordingStatus.RECORDING, RecordingStatus.COMPLETED, RecordingStatus.FAILED},
+            RecordingStatus.FAILED: set(),
+            RecordingStatus.COMPLETED: set(),
+        }
+        return target in transitions[self]
+
+
 class RecordingMetadata(Base):
     """Metadata and storage reference for one recording of an attempt.
 
@@ -67,3 +89,11 @@ class RecordingMetadata(Base):
     storage_reference: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     attempt: Mapped["AssessmentAttempt"] = relationship(back_populates="recordings")
+
+    def transition_to(self, target: RecordingStatus) -> None:
+        """Validate and apply a backend-owned recording status transition."""
+        if not isinstance(target, RecordingStatus):
+            raise ValueError(f"Unknown recording status: {target!r}")
+        if not self.status.can_transition_to(target):
+            raise ValueError(f"Invalid recording status transition: {self.status.value} -> {target.value}")
+        self.status = target
