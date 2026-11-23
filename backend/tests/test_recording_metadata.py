@@ -1,7 +1,9 @@
 """Focused tests for recording metadata lifecycle mapping."""
 
 import pytest
-from sqlalchemy import Enum as SAEnum
+from sqlalchemy import Enum as SAEnum, create_engine, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.models.assessment_attempt import AssessmentAttempt, AttemptStatus
 from app.models.attempt_event import AttemptEvent, AttemptEventType
@@ -69,3 +71,54 @@ def test_recording_model_relationship_and_event_contract_remain_intact() -> None
     # AttemptStatus already has its own interruption state; recording interruption
     # events remain independent and this model introduces no attempt-status values.
     assert "Recording Interrupted" not in [status.value for status in AttemptStatus]
+
+
+def create_recording_table(engine) -> None:
+    """Create the ORM table with a minimal SQLite parent table for FK checks."""
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE TABLE assessment_attempts (id BIGINT PRIMARY KEY)")
+        RecordingMetadata.__table__.create(connection)
+
+
+def test_database_enforces_one_recording_per_source_and_attempt() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    create_recording_table(engine)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("INSERT INTO assessment_attempts (id) VALUES (1)")
+    with Session(engine) as session:
+        session.add_all([
+            RecordingMetadata(id=1, attempt_id=1, source="webcam", status=RecordingStatus.PENDING),
+            RecordingMetadata(id=2, attempt_id=1, source="screen", status=RecordingStatus.PENDING),
+        ])
+        session.commit()
+        for index, source in enumerate(("webcam", "screen"), start=3):
+            session.add(RecordingMetadata(id=index, attempt_id=1, source=source, status=RecordingStatus.PENDING))
+            with pytest.raises(IntegrityError):
+                session.commit()
+            session.rollback()
+    engine.dispose()
+
+
+@pytest.mark.parametrize("status", list(RecordingStatus))
+def test_database_accepts_each_approved_recording_status(status: RecordingStatus) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    create_recording_table(engine)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("INSERT INTO assessment_attempts (id) VALUES (1)")
+    with Session(engine) as session:
+        session.add(RecordingMetadata(id=1, attempt_id=1, source="webcam", status=status))
+        session.commit()
+        assert session.execute(select(RecordingMetadata.status)).scalar_one() == status
+    engine.dispose()
+
+
+def test_database_rejects_unknown_recording_status() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    create_recording_table(engine)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("INSERT INTO assessment_attempts (id) VALUES (1)")
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        connection.exec_driver_sql(
+            "INSERT INTO recording_metadata (attempt_id, source, status) VALUES (1, 'webcam', 'Unknown')"
+        )
+    engine.dispose()
