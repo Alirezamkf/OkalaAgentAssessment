@@ -1,9 +1,10 @@
 """ORM model for provider-independent recording metadata."""
 
 from datetime import datetime
+from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -16,8 +17,7 @@ class RecordingMetadata(Base):
     """Metadata and storage reference for one recording of an attempt.
 
     The model stores no recording bytes and does not select or depend on a
-    storage provider. Source and status remain strings so future workflows
-    can add values without database enum migrations.
+    storage provider. Status values are a strict recording lifecycle contract.
     """
 
     __tablename__ = "recording_metadata"
@@ -33,6 +33,10 @@ class RecordingMetadata(Base):
         CheckConstraint(
             "source IN ('webcam', 'screen')",
             name="ck_recording_metadata_source_allowed",
+        ),
+        CheckConstraint(
+            "status IN ('Pending', 'Starting', 'Recording', 'Interrupted', 'Failed', 'Completed')",
+            name="ck_recording_metadata_status_allowed",
         ),
         UniqueConstraint(
             "attempt_id",
@@ -51,7 +55,11 @@ class RecordingMetadata(Base):
         nullable=False,
     )
     source: Mapped[str] = mapped_column(String(50), nullable=False)
-    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped["RecordingStatus"] = mapped_column(
+        SAEnum(RecordingStatus, name="recording_status", native_enum=False,
+               validate_strings=True, values_callable=lambda enum_type: [member.value for member in enum_type]),
+        nullable=False,
+    )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
