@@ -1,7 +1,7 @@
 """Focused tests for recording metadata lifecycle mapping."""
 
 import pytest
-from sqlalchemy import Enum as SAEnum, create_engine, select
+from sqlalchemy import Enum as SAEnum, create_engine, event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -75,6 +75,12 @@ def test_recording_model_relationship_and_event_contract_remain_intact() -> None
 
 def create_recording_table(engine) -> None:
     """Create the ORM table with a minimal SQLite parent table for FK checks."""
+    @event.listens_for(engine, "connect")
+    def enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     with engine.begin() as connection:
         connection.exec_driver_sql("CREATE TABLE assessment_attempts (id BIGINT PRIMARY KEY)")
         RecordingMetadata.__table__.create(connection)
@@ -120,5 +126,39 @@ def test_database_rejects_unknown_recording_status() -> None:
     with engine.begin() as connection, pytest.raises(IntegrityError):
         connection.exec_driver_sql(
             "INSERT INTO recording_metadata (attempt_id, source, status) VALUES (1, 'webcam', 'Unknown')"
+        )
+    engine.dispose()
+
+
+@pytest.mark.parametrize("source", ["webcam", "screen"])
+def test_database_accepts_each_approved_recording_source(source: str) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    create_recording_table(engine)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("INSERT INTO assessment_attempts (id) VALUES (1)")
+    with Session(engine) as session:
+        session.add(RecordingMetadata(id=1, attempt_id=1, source=source, status=RecordingStatus.PENDING))
+        session.commit()
+    engine.dispose()
+
+
+def test_database_rejects_unsupported_recording_source() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    create_recording_table(engine)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("INSERT INTO assessment_attempts (id) VALUES (1)")
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        connection.exec_driver_sql(
+            "INSERT INTO recording_metadata (attempt_id, source, status) VALUES (1, 'microphone', 'Pending')"
+        )
+    engine.dispose()
+
+
+def test_database_rejects_recording_for_nonexistent_attempt() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    create_recording_table(engine)
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        connection.exec_driver_sql(
+            "INSERT INTO recording_metadata (attempt_id, source, status) VALUES (404, 'webcam', 'Pending')"
         )
     engine.dispose()

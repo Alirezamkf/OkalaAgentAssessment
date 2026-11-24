@@ -612,3 +612,117 @@ def test_deleting_selected_parent_is_restricted(db: Session, parent: str) -> Non
         db.execute(statement)
         db.commit()
     db.rollback()
+
+
+def test_attempt_question_order_persists_position_order_after_reload(db: Session) -> None:
+    hr = create_hr_user(db)
+    exam = create_exam(db, hr, "Stable order exam")
+    candidate = create_candidate(db)
+    invitation = create_invitation(db, exam, candidate, "stable-order")
+    attempt = create_attempt(db, invitation)
+    questions = [create_question(db, exam, f"Question {i}", question_id=i) for i in (1, 2, 3)]
+    for index, question in enumerate(questions, start=1):
+        db.add(ExamInvitationQuestion(id=index, exam_invitation_id=invitation.id,
+                                      exam_question_id=question.id, exam_id=exam.id))
+    db.flush()
+    for index, question in enumerate(questions, start=1):
+        db.add(AttemptQuestionOrder(id=index, attempt_id=attempt.id, exam_invitation_id=invitation.id,
+                                    exam_question_id=question.id, position=4-index))
+    db.commit()
+    db.expire_all()
+    restored = db.query(AttemptQuestionOrder).filter_by(attempt_id=attempt.id).order_by(
+        AttemptQuestionOrder.position
+    ).all()
+    assert [row.exam_question_id for row in restored] == [3, 2, 1]
+
+
+@pytest.mark.parametrize("position", [0, -1])
+def test_attempt_question_order_requires_positive_position(db: Session, position: int) -> None:
+    hr = create_hr_user(db)
+    exam = create_exam(db, hr, "Positive order exam")
+    candidate = create_candidate(db)
+    invitation = create_invitation(db, exam, candidate, f"positive-order-{position}")
+    attempt = create_attempt(db, invitation)
+    question = create_question(db, exam, "Selected question")
+    db.add(ExamInvitationQuestion(id=1, exam_invitation_id=invitation.id,
+                                  exam_question_id=question.id, exam_id=exam.id))
+    db.flush()
+    db.add(AttemptQuestionOrder(id=1, attempt_id=attempt.id, exam_invitation_id=invitation.id,
+                                exam_question_id=question.id, position=position))
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
+
+
+def test_attempt_question_order_position_is_unique_per_attempt(db: Session) -> None:
+    hr = create_hr_user(db)
+    exam = create_exam(db, hr, "Unique order exam")
+    candidate = create_candidate(db)
+    invitation = create_invitation(db, exam, candidate, "unique-order")
+    attempt = create_attempt(db, invitation)
+    questions = [create_question(db, exam, f"Question {i}", question_id=i) for i in (1, 2)]
+    for i, question in enumerate(questions, start=1):
+        db.add(ExamInvitationQuestion(id=i, exam_invitation_id=invitation.id,
+                                      exam_question_id=question.id, exam_id=exam.id))
+    db.flush()
+    db.add(AttemptQuestionOrder(id=1, attempt_id=attempt.id, exam_invitation_id=invitation.id,
+                                exam_question_id=questions[0].id, position=1))
+    db.flush()
+    db.add(AttemptQuestionOrder(id=2, attempt_id=attempt.id, exam_invitation_id=invitation.id,
+                                exam_question_id=questions[1].id, position=1))
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
+
+
+def test_attempt_question_order_question_is_unique_per_attempt(db: Session) -> None:
+    hr = create_hr_user(db)
+    exam = create_exam(db, hr, "Unique question exam")
+    candidate = create_candidate(db)
+    invitation = create_invitation(db, exam, candidate, "unique-question")
+    attempt = create_attempt(db, invitation)
+    question = create_question(db, exam, "Selected question")
+    db.add(ExamInvitationQuestion(id=1, exam_invitation_id=invitation.id,
+                                  exam_question_id=question.id, exam_id=exam.id))
+    db.flush()
+    for order_id, position in ((1, 1), (2, 2)):
+        db.add(AttemptQuestionOrder(id=order_id, attempt_id=attempt.id, exam_invitation_id=invitation.id,
+                                    exam_question_id=question.id, position=position))
+        if order_id == 1:
+            db.flush()
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
+
+
+def test_attempt_question_order_requires_invitation_selection(db: Session) -> None:
+    hr = create_hr_user(db)
+    exam = create_exam(db, hr, "Selected question required exam")
+    candidate = create_candidate(db)
+    invitation = create_invitation(db, exam, candidate, "unselected-question")
+    attempt = create_attempt(db, invitation)
+    question = create_question(db, exam, "Not selected")
+    db.add(AttemptQuestionOrder(id=1, attempt_id=attempt.id, exam_invitation_id=invitation.id,
+                                exam_question_id=question.id, position=1))
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
+
+
+def test_attempt_question_order_invitation_must_match_attempt(db: Session) -> None:
+    hr = create_hr_user(db)
+    exam = create_exam(db, hr, "Matching invitation exam")
+    candidate = create_candidate(db)
+    invitation_one = create_invitation(db, exam, candidate, "order-invitation-one", invitation_id=1)
+    invitation_two = create_invitation(db, exam, candidate, "order-invitation-two", invitation_id=2)
+    attempt_one = create_attempt(db, invitation_one, attempt_id=1)
+    attempt_two = create_attempt(db, invitation_two, attempt_id=2)
+    question = create_question(db, exam, "Selected for invitation one")
+    db.add(ExamInvitationQuestion(id=1, exam_invitation_id=invitation_one.id,
+                                  exam_question_id=question.id, exam_id=exam.id))
+    db.flush()
+    db.add(AttemptQuestionOrder(id=1, attempt_id=attempt_two.id, exam_invitation_id=invitation_one.id,
+                                exam_question_id=question.id, position=1))
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()
