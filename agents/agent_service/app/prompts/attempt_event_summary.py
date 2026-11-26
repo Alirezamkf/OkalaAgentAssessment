@@ -17,8 +17,8 @@ exactly as supplied. If you include a timestamp in the summary, copy its exact
 string; do not reformat it, change its timezone, or convert its digits.
 
 Mention a duration only when duration_seconds is an integer in the input. State
-it in seconds without conversion or calculation. Zero is a valid supplied
-duration. A null or absent duration is unavailable: do not mention a duration,
+it in seconds without conversion or calculation. Zero is a valid supplied duration.
+A null or absent duration is unavailable: do not mention a duration,
 estimate one, or infer one from timestamps or other events.
 
 Report only recorded facts. Do not invent events, explanations, causes,
@@ -33,11 +33,9 @@ Return only a JSON object that conforms to the supplied AttemptEventSummaryOutpu
 schema. Write a successful summary in Persian. For an empty events list, use
 status "empty", summary exactly "هیچ رخدادی ثبت نشده است", and events [].
 
-Do not decide whether non-empty input is sufficient. A null duration alone
-does not make input insufficient. Only if the workflow explicitly instructs
-you to return status "insufficient_data", return that status, set "summary" to
-null, and preserve the supplied source events exactly as required by the
-schema. Never guess a summary to fill missing information."""
+Do not decide whether non-empty input is sufficient. A null duration alone does not make input insufficient.
+Only if the workflow explicitly instructs you to return status "insufficient_data", return that status, set "summary" to
+null. Preserve the supplied source events exactly as required by the schema. Never guess a summary to fill missing information."""
 
 
 def build_attempt_event_summary_prompt(

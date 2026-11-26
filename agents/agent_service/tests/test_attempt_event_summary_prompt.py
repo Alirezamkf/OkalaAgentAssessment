@@ -127,7 +127,7 @@ def test_prompt_does_not_set_an_insufficient_data_threshold() -> None:
         in prompt
     )
     assert 'set "summary" to\nnull' in prompt
-    assert "preserve the supplied source events exactly as required by the" in prompt
+    assert "preserve the supplied source events exactly as required by the" in prompt.lower()
     assert rendered_input(prompt) == {"events": events}
 
 
