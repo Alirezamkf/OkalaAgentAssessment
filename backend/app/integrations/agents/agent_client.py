@@ -1,16 +1,26 @@
-"""Authenticated HTTP client boundary for the independent Agent Service."""
+"""Authenticated, reusable HTTP client boundary for the Agent Service."""
 
-from typing import Any, Protocol
+import math
+from typing import Any
 
-from pydantic import SecretStr
+import httpx
+from pydantic import SecretStr, ValidationError
 
-
-WORKFLOW_ENDPOINTS = frozenset(
-    {
-        "/api/v1/workflows/attempt-event-summary",
-        "/api/v1/workflows/hr-reporting",
-    }
+from app.core.config import (
+    DEFAULT_AGENT_SERVICE_CONNECT_TIMEOUT_SECONDS,
+    DEFAULT_AGENT_SERVICE_REQUEST_TIMEOUT_SECONDS,
+    load_agent_service_timeouts,
 )
+from app.integrations.agents.contracts import (
+    AttemptEventSummaryRequest,
+    AttemptEventSummaryResponse,
+    validate_attempt_event_summary_response,
+)
+
+
+ATTEMPT_EVENT_SUMMARY_PATH = "/api/v1/workflows/attempt-event-summary"
+HR_REPORTING_PATH = "/api/v1/workflows/hr-reporting"
+WORKFLOW_ENDPOINTS = frozenset({ATTEMPT_EVENT_SUMMARY_PATH, HR_REPORTING_PATH})
 
 
 class AgentServiceAuthenticationNotConfiguredError(RuntimeError):
@@ -24,10 +34,30 @@ class AgentServiceAuthenticationNotConfiguredError(RuntimeError):
 
 
 class AgentServiceUnavailableError(RuntimeError):
-    """Safe Backend-facing error that does not retain transport details."""
+    """Safe Backend-facing error for Agent Service connection failures."""
 
     code = "agent_service_unavailable"
     message = "Agent Service is unavailable."
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
+class AgentServiceTimeoutError(RuntimeError):
+    """Safe Backend-facing error for connect or request timeouts."""
+
+    code = "agent_service_timeout"
+    message = "Agent Service request timed out."
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
+class AgentServiceResponseError(RuntimeError):
+    """Safe error for malformed or contract-invalid successful responses."""
+
+    code = "agent_service_invalid_response"
+    message = "Agent Service returned an invalid response."
 
     def __init__(self) -> None:
         super().__init__(self.message)
@@ -52,48 +82,70 @@ class AgentServiceHTTPError(RuntimeError):
         super().__init__(message)
 
 
-class AsyncHTTPTransport(Protocol):
-    async def post(
-        self,
-        url: str,
-        *,
-        json: Any,
-        headers: dict[str, str],
-    ) -> Any: ...
-
-
 class AgentServiceClient:
-    """Post permitted workflow payloads with the Backend service credential.
+    """Own and reuse one async HTTP client for protected Agent Service calls.
 
-    The HTTP transport is injected so its lifecycle and timeout policy remain
-    owned by the Backend application. No request is sent without credentials.
+    Use as an async context manager or call ``aclose`` when the owning
+    application lifespan ends. Credentials and request/response bodies are
+    never logged or copied into exceptions.
     """
 
     def __init__(
         self,
-        transport: AsyncHTTPTransport,
+        transport: httpx.AsyncBaseTransport | None = None,
         *,
         base_url: str,
         shared_secret: SecretStr | None,
+        connection_timeout_seconds: float = DEFAULT_AGENT_SERVICE_CONNECT_TIMEOUT_SECONDS,
+        request_timeout_seconds: float = DEFAULT_AGENT_SERVICE_REQUEST_TIMEOUT_SECONDS,
     ) -> None:
-        self._transport = transport
+        if (
+            not math.isfinite(connection_timeout_seconds)
+            or not math.isfinite(request_timeout_seconds)
+            or connection_timeout_seconds <= 0
+            or request_timeout_seconds <= 0
+        ):
+            raise ValueError("Agent Service timeouts must be positive")
         self._base_url = base_url.rstrip("/")
         self._shared_secret = shared_secret
+        self._client = httpx.AsyncClient(
+            base_url=self._base_url,
+            transport=transport,
+            timeout=httpx.Timeout(
+                timeout=request_timeout_seconds,
+                connect=connection_timeout_seconds,
+            ),
+        )
 
     @classmethod
-    def from_settings(cls, transport: AsyncHTTPTransport) -> "AgentServiceClient":
-        """Build from Backend configuration; the service secret is optional."""
+    def from_settings(
+        cls,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> "AgentServiceClient":
+        """Build the reusable client from centralized Backend settings."""
 
         from app.core.config import settings
 
+        connect_timeout, request_timeout = load_agent_service_timeouts()
         return cls(
             transport,
             base_url=settings.agent_service_url,
             shared_secret=settings.agent_service_shared_secret,
+            connection_timeout_seconds=connect_timeout,
+            request_timeout_seconds=request_timeout,
         )
 
-    async def post_workflow(self, path: str, payload: Any) -> Any:
-        """Send a request to one of the two contract-defined workflow paths."""
+    async def __aenter__(self) -> "AgentServiceClient":
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    async def post_workflow(self, path: str, payload: Any) -> httpx.Response:
+        """Send JSON to a contract-approved workflow path."""
 
         if path not in WORKFLOW_ENDPOINTS:
             raise ValueError("unsupported Agent Service workflow endpoint")
@@ -103,24 +155,42 @@ class AgentServiceClient:
             raise AgentServiceAuthenticationNotConfiguredError()
 
         try:
-            response = await self._transport.post(
-                f"{self._base_url}{path}",
+            response = await self._client.post(
+                path,
                 json=payload,
                 headers={
                     "Authorization": f"AgentService {secret.get_secret_value()}"
                 },
             )
-            status_code = getattr(response, "status_code", None)
-            if status_code is not None:
-                if not isinstance(status_code, int):
-                    raise AgentServiceUnavailableError()
-                if not 200 <= status_code < 300:
-                    raise AgentServiceHTTPError(status_code)
-            return response
-        except AgentServiceHTTPError:
-            raise
-        except AgentServiceUnavailableError:
-            raise
-        except Exception:
-            # Transport exceptions may retain the request and its headers.
+        except httpx.TimeoutException:
+            raise AgentServiceTimeoutError() from None
+        except httpx.RequestError:
             raise AgentServiceUnavailableError() from None
+        except Exception:
+            # Custom transport failures can also retain headers or request data.
+            raise AgentServiceUnavailableError() from None
+
+        if not 200 <= response.status_code < 300:
+            raise AgentServiceHTTPError(response.status_code)
+        return response
+
+    async def summarize_attempt_events(
+        self,
+        payload: AttemptEventSummaryRequest,
+    ) -> AttemptEventSummaryResponse:
+        """Invoke AI-FR-01 using the strict Backend-local wire contract."""
+
+        try:
+            request = AttemptEventSummaryRequest.model_validate(payload)
+        except ValidationError:
+            raise ValueError("Attempt Event Summary request is invalid") from None
+
+        response = await self.post_workflow(
+            ATTEMPT_EVENT_SUMMARY_PATH,
+            request.model_dump(mode="json"),
+        )
+        try:
+            body = response.json()
+            return validate_attempt_event_summary_response(body, request)
+        except (ValueError, TypeError):
+            raise AgentServiceResponseError() from None

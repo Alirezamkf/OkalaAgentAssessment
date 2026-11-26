@@ -1,7 +1,12 @@
 import os
+import math
 from typing import Mapping
 
 from pydantic import SecretStr
+
+
+DEFAULT_AGENT_SERVICE_CONNECT_TIMEOUT_SECONDS = 5.0
+DEFAULT_AGENT_SERVICE_REQUEST_TIMEOUT_SECONDS = 35.0
 
 
 def load_agent_service_shared_secret(
@@ -29,3 +34,35 @@ class Settings:
 
 
 settings = Settings()
+
+
+def load_agent_service_timeouts(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[float, float]:
+    """Load positive Agent Service connect and request timeouts in seconds.
+
+    Validation happens when the Agent client is constructed, not while the
+    Backend starts, so unrelated Backend routes remain available if these
+    optional integration settings are malformed.
+    """
+
+    source = os.environ if environ is None else environ
+    values: list[float] = []
+    for name, default in (
+        (
+            "AGENT_SERVICE_CONNECT_TIMEOUT_SECONDS",
+            DEFAULT_AGENT_SERVICE_CONNECT_TIMEOUT_SECONDS,
+        ),
+        (
+            "AGENT_SERVICE_REQUEST_TIMEOUT_SECONDS",
+            DEFAULT_AGENT_SERVICE_REQUEST_TIMEOUT_SECONDS,
+        ),
+    ):
+        try:
+            value = float(source.get(name, str(default)))
+        except (TypeError, ValueError):
+            raise ValueError(f"{name} must be a positive number") from None
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be a positive number")
+        values.append(value)
+    return values[0], values[1]
