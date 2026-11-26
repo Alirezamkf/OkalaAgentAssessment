@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from app.core.errors import AgentServiceError
 from app.schemas.attempt_event_summary import (
     AttemptEventSummaryInput,
     AttemptEventSummaryOutput,
@@ -22,11 +23,13 @@ from app.schemas.hr_reporting import (
 )
 
 
-class WorkflowValidationError(ValueError):
+class WorkflowValidationError(AgentServiceError):
     """Safe base error for invalid workflow input or output."""
 
     code = "workflow_validation_error"
     message = "Workflow data failed validation."
+    public_message = "Workflow data is invalid."
+    http_status_code = 422
 
     def __init__(self) -> None:
         super().__init__(self.message)
@@ -37,6 +40,8 @@ class WorkflowInputValidationError(WorkflowValidationError):
 
     code = "workflow_input_invalid"
     message = "Workflow input is invalid."
+    public_message = "Workflow input is invalid."
+    http_status_code = 422
 
 
 class WorkflowOutputValidationError(WorkflowValidationError):
@@ -44,6 +49,8 @@ class WorkflowOutputValidationError(WorkflowValidationError):
 
     code = "workflow_output_invalid"
     message = "Workflow output is invalid."
+    public_message = "The AI provider returned an unusable result."
+    http_status_code = 502
 
 
 def validate_attempt_event_summary_input(

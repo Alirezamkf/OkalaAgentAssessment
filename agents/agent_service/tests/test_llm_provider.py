@@ -77,6 +77,10 @@ def test_sends_configured_request_and_parses_typed_response(
     assert result.model == "test-model"
     assert "placeholder-secret" not in caplog.text
     assert "safe test prompt" not in caplog.text
+    assert any(
+        getattr(record, "correlation_id", None) == "request-123"
+        for record in caplog.records
+    )
 
 
 def test_maps_timeout_to_safe_error(caplog: pytest.LogCaptureFixture) -> None:

@@ -2,13 +2,13 @@
 
 import json
 import logging
-import re
 from typing import TypeVar
 
 import httpx
 from pydantic import BaseModel
 
 from app.core.config import LLMSettings, get_llm_settings
+from app.core.correlation import is_valid_correlation_id
 from app.integrations.llm.errors import (
     LLMProviderConfigurationError,
     LLMProviderConnectionError,
@@ -21,7 +21,6 @@ from app.integrations.llm.protocol import LLMResult
 
 logger = logging.getLogger(__name__)
 OutputT = TypeVar("OutputT", bound=BaseModel)
-_CORRELATION_ID = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 
 
 class OpenAICompatibleProvider:
@@ -61,7 +60,7 @@ class OpenAICompatibleProvider:
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        if correlation_id and _CORRELATION_ID.fullmatch(correlation_id):
+        if is_valid_correlation_id(correlation_id):
             headers["X-Correlation-ID"] = correlation_id
 
         payload = {
@@ -81,17 +80,23 @@ class OpenAICompatibleProvider:
                     json=payload,
                 )
         except httpx.TimeoutException:
-            self._log_failure("provider_timeout")
+            self._log_failure("provider_timeout", correlation_id=correlation_id)
             raise LLMProviderTimeoutError() from None
         except httpx.InvalidURL:
-            self._log_failure("provider_configuration_error")
+            self._log_failure(
+                "provider_configuration_error", correlation_id=correlation_id
+            )
             raise LLMProviderConfigurationError() from None
         except httpx.RequestError:
-            self._log_failure("provider_connection_error")
+            self._log_failure("provider_connection_error", correlation_id=correlation_id)
             raise LLMProviderConnectionError() from None
 
         if not 200 <= response.status_code < 300:
-            self._log_failure("provider_http_error", status_code=response.status_code)
+            self._log_failure(
+                "provider_http_error",
+                status_code=response.status_code,
+                correlation_id=correlation_id,
+            )
             raise LLMProviderHTTPError(response.status_code)
 
         try:
@@ -103,16 +108,19 @@ class OpenAICompatibleProvider:
         except Exception:
             # Do not retain provider payloads or validation details: they can
             # contain prompts, assessment data, or provider-generated content.
-            self._log_failure("provider_response_error")
+            self._log_failure("provider_response_error", correlation_id=correlation_id)
             raise LLMProviderResponseError() from None
 
+        success_details: dict[str, str] = {
+            "llm_provider": self.settings.provider,
+            "llm_model": self.settings.model,
+            "outcome": "success",
+        }
+        if is_valid_correlation_id(correlation_id):
+            success_details["correlation_id"] = correlation_id
         logger.info(
             "LLM provider request succeeded",
-            extra={
-                "llm_provider": self.settings.provider,
-                "llm_model": self.settings.model,
-                "outcome": "success",
-            },
+            extra=success_details,
         )
         return LLMResult(
             output=output,
@@ -128,7 +136,13 @@ class OpenAICompatibleProvider:
             return validate_json(content)
         return response_model.parse_raw(content)
 
-    def _log_failure(self, error_code: str, *, status_code: int | None = None) -> None:
+    def _log_failure(
+        self,
+        error_code: str,
+        *,
+        status_code: int | None = None,
+        correlation_id: str | None = None,
+    ) -> None:
         details: dict[str, str | int] = {
             "llm_provider": self.settings.provider,
             "llm_model": self.settings.model,
@@ -137,4 +151,6 @@ class OpenAICompatibleProvider:
         }
         if status_code is not None:
             details["http_status"] = status_code
+        if is_valid_correlation_id(correlation_id):
+            details["correlation_id"] = correlation_id
         logger.warning("LLM provider request failed", extra=details)
