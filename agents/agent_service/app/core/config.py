@@ -22,7 +22,7 @@ class LLMSettings(BaseModel):
 
     provider: str = Field(..., min_length=1, max_length=64)
     model: str = Field(..., min_length=1, max_length=200)
-    api_endpoint: str | None = Field(default=None, max_length=2048)
+    api_endpoint: str = Field(..., min_length=1, max_length=2048)
     api_key: SecretStr
     request_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
 
@@ -38,9 +38,7 @@ class LLMSettings(BaseModel):
         return value
 
     @validator("api_endpoint")
-    def validate_api_endpoint(cls, value: str | None) -> str | None:
-        if value is None or not value:
-            return None
+    def validate_api_endpoint(cls, value: str) -> str:
         try:
             parsed = urlsplit(value)
             valid = parsed.scheme in {"http", "https"} and bool(parsed.hostname)
@@ -65,7 +63,7 @@ def load_llm_settings(environ: Mapping[str, str] | None = None) -> LLMSettings:
     """Read and validate LLM settings without exposing invalid values."""
 
     source = os.environ if environ is None else environ
-    endpoint = source.get("LLM_API_ENDPOINT", "").strip() or None
+    endpoint = source.get("LLM_API_ENDPOINT", "").strip()
     values = {
         "provider": source.get("LLM_PROVIDER"),
         "model": source.get("LLM_MODEL"),

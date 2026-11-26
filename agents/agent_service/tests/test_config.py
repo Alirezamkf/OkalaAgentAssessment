@@ -12,6 +12,7 @@ def valid_environment(**overrides: str) -> dict[str, str]:
     values = {
         "LLM_PROVIDER": "example-provider",
         "LLM_MODEL": "example-model-v1",
+        "LLM_API_ENDPOINT": "https://llm.example.test/v1/chat/completions",
         "LLM_API_KEY": "test-placeholder-secret",
     }
     values.update(overrides)
@@ -35,18 +36,25 @@ def test_loads_valid_configuration_and_masks_credential() -> None:
     assert "test-placeholder-secret" not in repr(settings)
 
 
-def test_endpoint_is_optional_and_timeout_has_safe_default() -> None:
-    settings = load_llm_settings(valid_environment())
+def test_missing_endpoint_is_rejected() -> None:
+    environment = valid_environment()
+    environment.pop("LLM_API_ENDPOINT")
 
-    assert settings.api_endpoint is None
-    assert settings.request_timeout_seconds == 30
+    with pytest.raises(LLMConfigurationError) as error:
+        load_llm_settings(environment)
+
+    assert "api_endpoint" in error.value.fields
+
+
+def test_timeout_defaults_to_30_seconds() -> None:
+    assert load_llm_settings(valid_environment()).request_timeout_seconds == 30
 
 
 def test_missing_required_settings_report_only_field_names() -> None:
     with pytest.raises(LLMConfigurationError) as error:
         load_llm_settings({})
 
-    assert error.value.fields == ("api_key", "model", "provider")
+    assert error.value.fields == ("api_endpoint", "api_key", "model", "provider")
     assert "LLM_API_KEY" not in str(error.value)
 
 
