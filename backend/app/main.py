@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.candidates import router as candidates_router
 from app.core.config import settings
 
 app = FastAPI(title="Okala Agent Assessment API", version="1.0.0")
@@ -11,6 +12,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(candidates_router)
 
 
 @app.get("/api/v1/health")
