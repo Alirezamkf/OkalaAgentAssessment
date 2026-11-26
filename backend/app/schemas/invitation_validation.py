@@ -3,7 +3,30 @@
 from datetime import datetime
 from enum import Enum
 
+from pydantic import field_validator
+
 from app.schemas.base import StrictModel
+
+
+class InvitationValidationRequest(StrictModel):
+    """Candidate-supplied invitation bearer token.
+
+    The token is the only credential accepted by the validation endpoint. No
+    candidate id, candidate code, exam id, or other browser-supplied identifier
+    is part of this contract.
+
+    Blank or whitespace-only values are malformed requests (422); the service
+    keeps its own defensive invalid-token guard for direct callers.
+    """
+
+    token: str
+
+    @field_validator("token")
+    @classmethod
+    def token_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Token must not be blank")
+        return value
 
 
 class InvitationValidationOutcome(str, Enum):
