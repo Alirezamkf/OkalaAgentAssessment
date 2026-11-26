@@ -5,6 +5,7 @@ from app.schemas.base import StrictModel
 from app.schemas.exam import ExamCreateResponse
 from app.schemas.invitation_validation import (
     InvitationValidationOutcome,
+    InvitationValidationRequest,
     InvitationValidationResponse,
 )
 from app.schemas.candidate import (
@@ -24,5 +25,6 @@ __all__ = [
     "CandidateInvitationRequest",
     "CandidateInvitationResponse",
     "InvitationValidationOutcome",
+    "InvitationValidationRequest",
     "InvitationValidationResponse",
 ]
