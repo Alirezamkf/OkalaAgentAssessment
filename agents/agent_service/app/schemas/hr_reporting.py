@@ -323,8 +323,9 @@ _FORBIDDEN_EXPLANATION_PATTERN = re.compile(
     r"|(?:به\s+(?:علت|دلیل)|باعث|منجر(?:\s+به)?|سبب)\s+[^.!?؟؛]{1,80}(?:شد|شده|می‌شود|است)",
     re.IGNORECASE,
 )
+_NUMBER_DIGITS = r"[0-9۰-۹٠-٩]"
 _NUMBER_PATTERN = re.compile(
-    r"(?<![\w.])[-+]?(?:[0-9۰-۹٠-٩]+(?:[.٫][0-9۰-۹٠-٩]+)?)(?![\w.])"
+    rf"(?<![\w.])[-+]?{_NUMBER_DIGITS}+(?:[.٫]{_NUMBER_DIGITS}+)?(?!\w)(?!\.{_NUMBER_DIGITS})"
 )
 
 
