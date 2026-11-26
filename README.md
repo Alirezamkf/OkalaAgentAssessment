@@ -1,6 +1,6 @@
 # Okala Agent Assessment
 
-An initial project skeleton for an agent-based assessment platform developed for Okala through CafeTadris. The current scope is architecture and infrastructure validation only. Assessment workflows, authentication, recording, and AI behavior are intentionally not implemented.
+An initial project skeleton for an agent-based assessment platform developed for Okala through CafeTadris. The current scope is architecture and infrastructure validation only. End-user authentication, assessment workflows, recording, and AI behavior are intentionally not implemented. Backend-to-Agent service authentication is configured separately through a shared local/deployment credential.
 
 ## Technology Stack
 
@@ -33,11 +33,24 @@ docker-compose*.yml       Development and production service orchestration
 
 ## Environment Configuration
 
-Copy `.env.example` to `.env` and replace `CHANGE_ME` with a local PostgreSQL password:
+Copy `.env.example` to `.env`, replace `CHANGE_ME` with a local PostgreSQL password,
+and set `AGENT_SERVICE_SHARED_SECRET` to a locally generated random value:
 
 ```powershell
 Copy-Item .env.example .env
 ```
+
+Generate a value with Python, then place the same value in the local `.env` file:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Docker Compose passes this credential only to Backend and Agent Service. Leave
+it unset to keep the Backend available without Agent Service calls; the Agent
+health endpoint remains public, while protected AI requests fail safely until
+the shared credential is configured. The Frontend must never receive this
+credential.
 
 Keep `.env` local and never commit it. Docker Compose uses `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` for both PostgreSQL and the Backend `DATABASE_URL`. Each developer should use a separate local `.env` and may therefore have an independent local database volume and credentials.
 

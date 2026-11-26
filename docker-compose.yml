@@ -20,12 +20,11 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-okala}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}@postgres:5432/${POSTGRES_DB:-okala_assessment}
       AGENT_SERVICE_URL: http://agent-service:8001
+      AGENT_SERVICE_SHARED_SECRET: ${AGENT_SERVICE_SHARED_SECRET:-}
     ports:
       - "8000:8000"
     depends_on:
       postgres:
-        condition: service_healthy
-      agent-service:
         condition: service_healthy
     healthcheck:
       test:
@@ -45,6 +44,7 @@ services:
     build: ./agents/agent_service
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      AGENT_SERVICE_SHARED_SECRET: ${AGENT_SERVICE_SHARED_SECRET:-}
     ports:
       - "8001:8001"
     healthcheck:
