@@ -34,10 +34,7 @@ schema. Write a successful summary in Persian. For an empty events list, use
 status "empty", summary exactly "هیچ رخدادی ثبت نشده است", and events [].
 
 Do not decide whether non-empty input is sufficient. A null duration alone does not make input insufficient.
-Only if the workflow explicitly instructs
-you to return status "insufficient_data", return that status, set "summary" to
-null, and preserve the supplied source events exactly as required by the
-schema. Never guess a summary to fill missing information."""
+Only if the workflow explicitly instructs you to return status "insufficient_data", return that status with summary set to null. Preserve the supplied source events exactly as required by the schema. Never guess a summary to fill missing information."""
 
 
 def build_attempt_event_summary_prompt(
