@@ -3,6 +3,10 @@
 from app.schemas.attempt_event import AttemptEventCreate, AttemptEventResponse
 from app.schemas.base import StrictModel
 from app.schemas.exam import ExamCreateResponse
+from app.schemas.invitation_validation import (
+    InvitationValidationOutcome,
+    InvitationValidationResponse,
+)
 from app.schemas.candidate import (
     CandidateInvitationRequest,
     CandidateInvitationResponse,
@@ -19,4 +23,6 @@ __all__ = [
     "CandidateRegistrationRequest",
     "CandidateInvitationRequest",
     "CandidateInvitationResponse",
+    "InvitationValidationOutcome",
+    "InvitationValidationResponse",
 ]
