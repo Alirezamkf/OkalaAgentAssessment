@@ -8,9 +8,16 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, SecretStr, ValidationError, validator
 
+from app.core.errors import AgentServiceError
 
-class LLMConfigurationError(ValueError):
+
+class LLMConfigurationError(AgentServiceError):
     """Safe configuration error containing field names, never setting values."""
+
+    code = "llm_configuration_error"
+    message = "LLM configuration is incomplete or invalid."
+    public_message = "The Agent Service is not configured to process this request."
+    http_status_code = 503
 
     def __init__(self, fields: tuple[str, ...]) -> None:
         self.fields = fields
