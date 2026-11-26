@@ -143,4 +143,4 @@ class CandidateInvitationResponse(StrictModel):
     email: EmailStr | None = None
     phone: str | None = None
     candidate_reused: bool
-    invitation_url: AnyHttpUrl
+    invitation_url: AnyHttpUrl | None = None
