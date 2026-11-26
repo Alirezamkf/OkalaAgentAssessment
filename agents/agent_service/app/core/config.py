@@ -6,7 +6,14 @@ import re
 from typing import Mapping
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, SecretStr, ValidationError, validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    ValidationError,
+    validator,
+)
 
 from app.core.errors import AgentServiceError
 
@@ -64,6 +71,26 @@ class LLMSettings(BaseModel):
         if not value.get_secret_value().strip():
             raise ValueError("must not be empty")
         return value
+
+
+class AgentServiceAuthSettings(BaseModel):
+    """Backend-to-Agent credential, kept separate from LLM provider settings."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    shared_secret: SecretStr | None = None
+
+
+def load_agent_service_auth_settings(
+    environ: Mapping[str, str] | None = None,
+) -> AgentServiceAuthSettings:
+    """Load the optional inbound service credential without blocking health."""
+
+    source = os.environ if environ is None else environ
+    value = source.get("AGENT_SERVICE_SHARED_SECRET", "").strip()
+    return AgentServiceAuthSettings(
+        shared_secret=SecretStr(value) if value else None
+    )
 
 
 def load_llm_settings(environ: Mapping[str, str] | None = None) -> LLMSettings:

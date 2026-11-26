@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.api.v1.workflows import router as protected_workflow_router
 from app.core.correlation import (
     CORRELATION_ID_HEADER,
     new_correlation_id,
@@ -19,16 +20,24 @@ app = FastAPI(title="Okala Generic Agent Service", version="1.0.0")
 
 
 def _error_response(
-    *, status_code: int, code: str, message: str, correlation_id: str
+    *,
+    status_code: int,
+    code: str,
+    message: str,
+    correlation_id: str,
+    response_headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     body = ErrorResponse(
         error=ErrorDetail(code=code, message=message),
         correlation_id=correlation_id,
     )
+    headers = {CORRELATION_ID_HEADER: correlation_id}
+    if response_headers:
+        headers.update(response_headers)
     return JSONResponse(
         status_code=status_code,
         content=body.model_dump(),
-        headers={CORRELATION_ID_HEADER: correlation_id},
+        headers=headers,
     )
 
 
@@ -61,6 +70,7 @@ async def handle_agent_service_error(
         code=exc.code,
         message=exc.public_message,
         correlation_id=correlation_id,
+        response_headers=getattr(exc, "response_headers", None),
     )
 
 
@@ -107,6 +117,9 @@ async def handle_unexpected_error(request: Request, exc: Exception) -> JSONRespo
         message="An internal error occurred.",
         correlation_id=correlation_id,
     )
+
+
+app.include_router(protected_workflow_router)
 
 
 @app.get("/health")

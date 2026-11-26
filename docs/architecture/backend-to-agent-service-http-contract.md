@@ -28,7 +28,8 @@ the source of truth for request and response fields.
   `agents/agent_service/app/core/errors.py`,
   `agents/agent_service/app/core/correlation.py`, and
   `agents/agent_service/app/main.py`
-- Issue #27: service-to-service authentication decision (pending)
+- Issue #27: Backend-to-Agent service authentication using the shared
+  `AGENT_SERVICE_SHARED_SECRET` credential
 
 ## Endpoints
 
@@ -242,6 +243,8 @@ The implemented mappings are:
 
 | Condition | HTTP status | Error code |
 | --- | ---: | --- |
+| Missing, invalid, or malformed Backend service credential | 401 | `agent_authentication_failed` |
+| Agent Service has no shared service credential configured | 503 | `agent_service_auth_not_configured` |
 | FastAPI request schema validation failure | 422 | `request_validation_error` |
 | Shared workflow input validation failure | 422 | `workflow_input_invalid` |
 | Generic workflow validation failure | 422 | `workflow_validation_error` |
@@ -305,9 +308,15 @@ apply to both Agent input and LLM prompt data.
 ## Authentication and timeout configuration
 
 The Backend owns user authentication and authorization under ADR-001. The
-service-to-service authentication mechanism for Backend-to-Agent requests is
-pending Issue #27. This contract does not select a token type, header, or
-credential format; those details must be added after Issue #27 is decided.
+Backend-to-Agent service authentication is separate from user, Admin HR, and
+candidate invitation authentication. The Backend sends the shared credential
+in `Authorization: AgentService <credential>`. Agent Service verifies it for
+every protected workflow endpoint using constant-time comparison. Missing,
+invalid, or malformed credentials receive HTTP 401 and the safe Issue #25 error
+envelope, with `WWW-Authenticate: AgentService`. If Agent Service has no shared
+credential configured, it rejects protected calls with HTTP 503. `GET /health`
+remains public. The credential is provided only to Backend and Agent Service;
+the Frontend must never receive or use it.
 
 Agent Service's `LLM_REQUEST_TIMEOUT_SECONDS` configures the Agent-to-LLM
 request. It defaults to 30 seconds and is validated as greater than zero and
@@ -317,17 +326,15 @@ open; no value is specified here.
 
 ## Open decisions and assumptions
 
-1. **Backend-to-Agent authentication:** pending Issue #27; the mechanism and
-   wire details are not finalized here.
-2. **Backend-to-Agent timeout:** no transport timeout value was found in the
+1. **Backend-to-Agent timeout:** no transport timeout value was found in the
    inspected configuration or contract documents.
-3. **Successful HTTP status:** `200 OK` is a proposal for successful workflow
+2. **Successful HTTP status:** `200 OK` is a proposal for successful workflow
    responses, pending approval. No successful status code is specified by the
    existing schemas or architecture documents.
-4. **Endpoint implementation:** both workflow paths are proposed by the
+3. **Endpoint implementation:** both workflow paths are proposed by the
    internal architecture and are not currently implemented; only the health
    endpoint exists today.
-5. **Provider timeout coordination:** the Backend timeout should be decided
+4. **Provider timeout coordination:** the Backend timeout should be decided
    with the Agent-to-LLM timeout and request overhead in mind, but no ordering
    or numeric margin is approved by the inspected sources.
 
