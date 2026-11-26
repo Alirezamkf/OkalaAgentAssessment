@@ -13,7 +13,6 @@ def valid_environment(**overrides: str) -> dict[str, str]:
         "LLM_PROVIDER": "example-provider",
         "LLM_MODEL": "example-model-v1",
         "LLM_API_KEY": "test-placeholder-secret",
-        "LLM_REQUEST_TIMEOUT_SECONDS": "45",
     }
     values.update(overrides)
     return values
@@ -21,7 +20,10 @@ def valid_environment(**overrides: str) -> dict[str, str]:
 
 def test_loads_valid_configuration_and_masks_credential() -> None:
     settings = load_llm_settings(
-        valid_environment(LLM_API_ENDPOINT="https://llm.example.test/v1")
+        valid_environment(
+            LLM_API_ENDPOINT="https://llm.example.test/v1",
+            LLM_REQUEST_TIMEOUT_SECONDS="45",
+        )
     )
 
     assert settings.provider == "example-provider"
