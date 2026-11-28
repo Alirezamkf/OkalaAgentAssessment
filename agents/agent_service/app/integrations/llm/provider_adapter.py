@@ -8,7 +8,7 @@ import httpx
 from pydantic import BaseModel
 
 from app.core.config import LLMSettings, get_llm_settings
-from app.core.correlation import is_valid_correlation_id
+from app.core.correlation import correlation_id_fingerprint, is_valid_correlation_id
 from app.integrations.llm.errors import (
     LLMProviderConfigurationError,
     LLMProviderConnectionError,
@@ -117,7 +117,9 @@ class OpenAICompatibleProvider:
             "outcome": "success",
         }
         if is_valid_correlation_id(correlation_id):
-            success_details["correlation_id"] = correlation_id
+            success_details["correlation_fingerprint"] = correlation_id_fingerprint(
+                correlation_id
+            )
         logger.info(
             "LLM provider request succeeded",
             extra=success_details,
@@ -152,5 +154,7 @@ class OpenAICompatibleProvider:
         if status_code is not None:
             details["http_status"] = status_code
         if is_valid_correlation_id(correlation_id):
-            details["correlation_id"] = correlation_id
+            details["correlation_fingerprint"] = correlation_id_fingerprint(
+                correlation_id
+            )
         logger.warning("LLM provider request failed", extra=details)

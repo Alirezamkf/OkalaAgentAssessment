@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1.workflows import router as protected_workflow_router
 from app.core.correlation import (
     CORRELATION_ID_HEADER,
+    correlation_id_fingerprint,
     new_correlation_id,
     request_correlation_id,
     is_valid_correlation_id,
@@ -61,7 +62,7 @@ async def handle_agent_service_error(
         extra={
             "error_code": exc.code,
             "http_status": exc.http_status_code,
-            "correlation_id": correlation_id,
+            "correlation_fingerprint": correlation_id_fingerprint(correlation_id),
             "outcome": "failure",
         },
     )
@@ -85,7 +86,7 @@ async def handle_request_validation_error(
         "Agent Service rejected an invalid request",
         extra={
             "error_code": "request_validation_error",
-            "correlation_id": correlation_id,
+            "correlation_fingerprint": correlation_id_fingerprint(correlation_id),
             "outcome": "failure",
         },
     )
@@ -107,7 +108,7 @@ async def handle_unexpected_error(request: Request, exc: Exception) -> JSONRespo
         extra={
             "error_code": "internal_error",
             "exception_type": type(exc).__name__,
-            "correlation_id": correlation_id,
+            "correlation_fingerprint": correlation_id_fingerprint(correlation_id),
             "outcome": "failure",
         },
     )

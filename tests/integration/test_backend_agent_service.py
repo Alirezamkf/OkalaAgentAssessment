@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import importlib
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -21,6 +23,7 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from pydantic import SecretStr
 
 
@@ -39,6 +42,12 @@ from app.integrations.agents.agent_client import (  # noqa: E402
     AgentServiceClient,
     AgentServiceHTTPError,
     AgentServiceResponseError,
+)
+from app.core.correlation import (  # noqa: E402
+    CORRELATION_ID_HEADER as BACKEND_CORRELATION_HEADER,
+    CorrelationIdMiddleware,
+    correlation_id_fingerprint,
+    get_current_correlation_id,
 )
 
 
@@ -129,8 +138,32 @@ EVENTS = [
     },
 ]
 PAYLOAD = {"events": EVENTS}
-SHARED_SECRET = "integration-shared-secret"
+SHARED_SECRET = "integration-test-shared-key-generated-with-32-bytes"
 CORRELATION_HEADER = "X-Correlation-ID"
+
+
+def test_correlation_fingerprint_uses_shared_hmac_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    correlation_id = "low-entropy-correlation"
+    monkeypatch.setenv("AGENT_SERVICE_SHARED_SECRET", SHARED_SECRET)
+    expected = "hmac-sha256:" + hmac.new(
+        SHARED_SECRET.encode("utf-8"),
+        correlation_id.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    agent_correlation = AGENT_MODULES["app.core.correlation"]
+
+    assert correlation_id_fingerprint(correlation_id) == expected
+    assert agent_correlation.correlation_id_fingerprint(correlation_id) == expected
+
+    monkeypatch.setenv("AGENT_SERVICE_SHARED_SECRET", "too-short")
+    assert correlation_id_fingerprint(correlation_id) is None
+    assert agent_correlation.correlation_id_fingerprint(correlation_id) is None
+
+    monkeypatch.delenv("AGENT_SERVICE_SHARED_SECRET", raising=False)
+    assert correlation_id_fingerprint(correlation_id) is None
+    assert agent_correlation.correlation_id_fingerprint(correlation_id) is None
 
 
 class RecordingProvider:
@@ -231,6 +264,106 @@ def test_backend_client_successfully_calls_protected_agent_and_preserves_contrac
     ]
 
 
+def test_backend_request_correlation_reaches_agent_workflow_and_provider_without_logging_data(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("AGENT_SERVICE_SHARED_SECRET", SHARED_SECRET)
+    correlation_id = "private-invitation-token.sentinel"
+    provider = RecordingProvider()
+    AGENT_APP.dependency_overrides[AGENT_PROVIDER_DEPENDENCY] = lambda: provider
+    agent_transport = RecordingASGITransport()
+    backend_app = FastAPI()
+    backend_app.add_middleware(CorrelationIdMiddleware)
+    agent_client = make_client(agent_transport)
+
+    @backend_app.post("/test-only-agent-proxy")
+    async def test_only_agent_proxy() -> dict[str, Any]:
+        result = await agent_client.summarize_attempt_events(PAYLOAD)
+        return {
+            "correlation_id": get_current_correlation_id(),
+            "result": result.model_dump(mode="json"),
+        }
+
+    async def send_request() -> httpx.Response:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=backend_app),
+            base_url="http://backend.test",
+        ) as client:
+            return await client.post(
+                "/test-only-agent-proxy",
+                headers={BACKEND_CORRELATION_HEADER: correlation_id},
+            )
+
+    caplog.set_level(logging.INFO)
+    response = asyncio.run(send_request())
+
+    assert response.status_code == 200
+    assert response.headers[BACKEND_CORRELATION_HEADER] == correlation_id
+    assert response.json()["correlation_id"] == correlation_id
+    assert len(agent_transport.requests) == len(agent_transport.responses) == 1
+    assert agent_transport.requests[0].headers[CORRELATION_HEADER] == correlation_id
+    assert agent_transport.responses[0].headers[CORRELATION_HEADER] == correlation_id
+    assert provider.calls[0]["correlation_id"] == correlation_id
+    assert correlation_id not in provider.calls[0]["prompt"]
+
+    workflow_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "operation", None) == "attempt_event_summary"
+    ]
+    assert len(workflow_records) == 4
+    expected_fingerprint = correlation_id_fingerprint(correlation_id)
+    assert all(
+        record.correlation_fingerprint == expected_fingerprint
+        for record in workflow_records
+    )
+    completed_records = [
+        record
+        for record in workflow_records
+        if getattr(record, "outcome", None) == "success"
+    ]
+    assert len(completed_records) == 2
+    assert all(record.duration_ms >= 0 for record in completed_records)
+    assert all(record.started_at and record.completed_at for record in completed_records)
+    correlation_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "correlation_fingerprint", None) is not None
+    ]
+    assert len(correlation_records) == 4
+    assert {record.correlation_fingerprint for record in correlation_records} == {
+        expected_fingerprint
+    }
+    assert {
+        record.name.rsplit(".", maxsplit=1)[-1] for record in correlation_records
+    } == {"agent_client", "attempt_event_summary"}
+    _assert_raw_log_value_absent(caplog.records, correlation_id)
+    assert SHARED_SECRET not in caplog.text
+    assert json.dumps(PAYLOAD) not in caplog.text
+    assert "private-question-sentinel" not in caplog.text
+    assert "private-candidate-answer-sentinel" not in caplog.text
+    _assert_raw_log_value_absent(caplog.records, json.dumps(PAYLOAD))
+    _assert_raw_log_value_absent(caplog.records, "2026-11-25T10:15:30Z")
+    _assert_raw_log_value_absent(caplog.records, SHARED_SECRET)
+
+
+def _assert_raw_log_value_absent(
+    records: list[logging.LogRecord], raw_value: str
+) -> None:
+    standard_fields = set(
+        logging.LogRecord("x", logging.INFO, "", 0, "", (), None).__dict__
+    )
+    for record in records:
+        assert raw_value not in record.getMessage()
+        for key, value in record.__dict__.items():
+            if key in standard_fields:
+                continue
+            assert value is None or isinstance(value, (str, int, float, bool))
+            if isinstance(value, str):
+                assert raw_value not in value
+
+
 def test_wrong_backend_credential_is_rejected_by_actual_agent_endpoint(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -267,6 +400,7 @@ def test_missing_backend_credential_fails_before_any_transport_request() -> None
 
 def test_agent_http_boundary_rejects_invalid_payload_before_provider_call(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Direct route case: Backend's strict client rejects bad input before sending it."""
 
@@ -280,10 +414,16 @@ def test_agent_http_boundary_rejects_invalid_payload_before_provider_call(
             {
                 **EVENTS[0],
                 "question_text": "private-question-sentinel",
+                "candidate_answer": "private-candidate-answer-sentinel",
+                "answer_key": "private-answer-key-sentinel",
+                "question_image": "private-image-sentinel",
             }
-        ]
+        ],
+        "video": "private-video-sentinel",
+        "recording_path": "private-recording-path-sentinel",
     }
 
+    caplog.set_level(logging.INFO)
     with _agent_modules_active():
         response = TestClient(AGENT_APP).post(
             "/api/v1/workflows/attempt-event-summary",
@@ -293,7 +433,17 @@ def test_agent_http_boundary_rejects_invalid_payload_before_provider_call(
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "request_validation_error"
-    assert "private-question-sentinel" not in response.text
+    for sensitive in (
+        "private-question-sentinel",
+        "private-candidate-answer-sentinel",
+        "private-answer-key-sentinel",
+        "private-image-sentinel",
+        "private-video-sentinel",
+        "private-recording-path-sentinel",
+    ):
+        assert sensitive not in response.text
+        assert sensitive not in caplog.text
+        _assert_raw_log_value_absent(caplog.records, sensitive)
     assert provider.calls == []
 
 
@@ -330,6 +480,8 @@ def test_agent_provider_failure_returns_safe_error_to_backend_client(
     assert SHARED_SECRET not in str(caught.value)
     assert provider_secret not in caplog.text
     assert SHARED_SECRET not in caplog.text
+    _assert_raw_log_value_absent(caplog.records, provider_secret)
+    _assert_raw_log_value_absent(caplog.records, SHARED_SECRET)
     assert len(provider.calls) == 1
 
 

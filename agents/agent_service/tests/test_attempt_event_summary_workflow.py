@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Any, TypeVar
 
 import pytest
@@ -10,6 +11,7 @@ from app.integrations.llm.errors import (
     LLMProviderResponseError,
     LLMProviderTimeoutError,
 )
+from app.core.correlation import correlation_id_fingerprint
 from app.integrations.llm.protocol import LLMResult
 from app.schemas.attempt_event_summary import (
     AttemptEventSummaryInput,
@@ -82,6 +84,20 @@ def valid_output(source: AttemptEventSummaryInput) -> dict[str, object]:
     }
 
 
+def assert_raw_value_absent_from_records(
+    records: list[logging.LogRecord], raw_value: str
+) -> None:
+    standard_fields = set(logging.LogRecord("x", logging.INFO, "", 0, "", (), None).__dict__)
+    for record in records:
+        assert raw_value not in record.getMessage()
+        for key, value in record.__dict__.items():
+            if key in standard_fields:
+                continue
+            assert value is None or isinstance(value, (str, int, float, bool))
+            if isinstance(value, str):
+                assert raw_value not in value
+
+
 def test_empty_input_returns_exact_empty_result_without_provider_call() -> None:
     source = source_with_events()
     provider = FakeProvider()
@@ -150,6 +166,60 @@ def test_two_events_use_prompt_provider_and_return_validated_summary() -> None:
     assert provider.calls[0]["response_model"] is AttemptEventSummaryOutput
     assert provider.calls[0]["correlation_id"] == correlation_id
     assert '"event_type":"TabHidden"' in str(provider.calls[0]["prompt"])
+
+
+def test_workflow_logs_safe_timing_and_correlation_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv(
+        "AGENT_SERVICE_SHARED_SECRET",
+        "agent-workflow-test-key-generated-with-32-or-more-bytes",
+    )
+    source = source_with_events(
+        event("TabHidden", "2026-11-25T10:15:30Z", 4),
+        event("TabVisible", "2026-11-25T10:15:34Z", 0),
+    )
+    provider = FakeProvider(valid_output(source))
+    correlation_id = "workflow-correlation-123"
+
+    with caplog.at_level(logging.INFO):
+        asyncio.run(
+            handle_attempt_event_summary(
+                source,
+                provider=provider,
+                correlation_id=correlation_id,
+            )
+        )
+
+    workflow_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "operation", None) == "attempt_event_summary"
+    ]
+    assert [record.getMessage() for record in workflow_records] == [
+        "Agent workflow started",
+        "Agent workflow completed",
+    ]
+    expected_fingerprint = correlation_id_fingerprint(correlation_id)
+    assert all(
+        record.correlation_fingerprint == expected_fingerprint
+        for record in workflow_records
+    )
+    assert workflow_records[0].started_at
+    assert workflow_records[1].started_at
+    assert workflow_records[1].completed_at
+    assert workflow_records[1].duration_ms >= 0
+    assert workflow_records[1].outcome == "success"
+    assert workflow_records[1].workflow_status == "success"
+    assert "2026-11-25T10:15:30Z" not in caplog.text
+    assert str(provider.calls[0]["prompt"]) not in caplog.text
+    assert_raw_value_absent_from_records(caplog.records, "2026-11-25T10:15:30Z")
+    assert_raw_value_absent_from_records(
+        caplog.records, str(provider.calls[0]["prompt"])
+    )
+    assert all(not hasattr(record, "correlation_id") for record in workflow_records)
+    assert_raw_value_absent_from_records(workflow_records, correlation_id)
 
 
 def test_two_events_with_null_durations_are_summarized() -> None:
@@ -233,3 +303,46 @@ def test_provider_failures_propagate_without_fabricated_summary(
 
     assert raised.value is provider_error
     assert len(provider.calls) == 1
+
+
+def test_workflow_failure_logs_category_without_exception_details(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv(
+        "AGENT_SERVICE_SHARED_SECRET",
+        "agent-workflow-test-key-generated-with-32-or-more-bytes",
+    )
+    source = source_with_events(
+        event("TabHidden", "2026-11-25T10:15:30Z"),
+        event("TabVisible", "2026-11-25T10:15:34Z"),
+    )
+    private_detail = "private-provider-error-sentinel"
+    provider = FakeProvider(error=LLMProviderTimeoutError(private_detail))
+
+    with caplog.at_level(logging.INFO):
+        with pytest.raises(LLMProviderTimeoutError):
+            asyncio.run(
+                handle_attempt_event_summary(
+                    source,
+                    provider=provider,
+                    correlation_id="workflow-failure-correlation",
+                )
+            )
+
+    completed = next(
+        record
+        for record in caplog.records
+        if record.getMessage() == "Agent workflow completed"
+    )
+    assert completed.operation == "attempt_event_summary"
+    expected_fingerprint = correlation_id_fingerprint("workflow-failure-correlation")
+    assert completed.correlation_fingerprint == expected_fingerprint
+    assert completed.duration_ms >= 0
+    assert completed.outcome == "failure"
+    assert completed.failure_category == "provider_timeout"
+    assert private_detail not in caplog.text
+    assert "2026-11-25T10:15:30Z" not in caplog.text
+    assert not hasattr(completed, "correlation_id")
+    assert_raw_value_absent_from_records(caplog.records, "workflow-failure-correlation")
+    assert_raw_value_absent_from_records(caplog.records, private_detail)

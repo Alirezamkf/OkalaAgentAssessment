@@ -31,7 +31,10 @@ from app.services.validation import (
     WorkflowInputValidationError,
     WorkflowOutputValidationError,
 )
-from app.core.correlation import CORRELATION_ID_HEADER
+from app.core.correlation import (
+    CORRELATION_ID_HEADER,
+    correlation_id_fingerprint,
+)
 
 
 def request_with_correlation(correlation_id: str = "issue25-test-id") -> Request:
@@ -141,17 +144,63 @@ def test_unexpected_error_is_generic_and_does_not_log_exception_text(
     assert sensitive_details not in caplog.text
 
 
+def test_error_logs_fingerprint_correlation_ids_without_raw_values(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv(
+        "AGENT_SERVICE_SHARED_SECRET",
+        "agent-error-test-key-generated-with-32-or-more-bytes",
+    )
+    raw_correlation_id = "private-invitation-token.sentinel"
+    sensitive_details = "private-provider-payload-sentinel"
+    caplog.set_level(logging.ERROR)
+
+    response = asyncio.run(
+        handle_unexpected_error(
+            request_with_correlation(raw_correlation_id),
+            RuntimeError(sensitive_details),
+        )
+    )
+
+    assert json.loads(response.body)["correlation_id"] == raw_correlation_id
+    error_record = next(
+        record for record in caplog.records
+        if record.getMessage() == "Unexpected Agent Service failure"
+    )
+    assert error_record.correlation_fingerprint == correlation_id_fingerprint(
+        raw_correlation_id
+    )
+    assert not hasattr(error_record, "correlation_id")
+    assert raw_correlation_id not in error_record.getMessage()
+    assert sensitive_details not in error_record.getMessage()
+    standard_fields = set(
+        logging.LogRecord("x", logging.INFO, "", 0, "", (), None).__dict__
+    )
+    for key, value in error_record.__dict__.items():
+        if key in standard_fields:
+            continue
+        assert value is None or isinstance(value, (str, int, float, bool))
+        if isinstance(value, str):
+            assert raw_correlation_id not in value
+            assert sensitive_details not in value
+
+
 def test_correlation_id_is_returned_or_replaced_when_invalid() -> None:
     from fastapi.testclient import TestClient
 
     client = TestClient(app)
     accepted = client.get("/health", headers={CORRELATION_ID_HEADER: "valid:request-1"})
     rejected = client.get("/health", headers={CORRELATION_ID_HEADER: "bad id"})
+    missing = client.get("/health")
 
     assert accepted.headers[CORRELATION_ID_HEADER] == "valid:request-1"
     generated = rejected.headers[CORRELATION_ID_HEADER]
     assert generated != "bad id"
     assert re.fullmatch(r"[0-9a-f]{32}", generated)
+    generated_for_missing = missing.headers[CORRELATION_ID_HEADER]
+    assert re.fullmatch(r"[0-9a-f]{32}", generated_for_missing)
+    assert generated_for_missing != generated
 
 
 def test_empty_and_insufficient_are_workflow_outcomes_not_service_errors() -> None:

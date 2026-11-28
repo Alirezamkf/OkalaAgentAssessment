@@ -5,8 +5,16 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
+from app.core.correlation import (
+    CORRELATION_ID_HEADER,
+    CorrelationIdMiddleware,
+    correlation_id_fingerprint,
+    get_current_correlation_id,
+)
 from app.core.config import (
     load_agent_service_shared_secret,
     load_agent_service_timeouts,
@@ -23,7 +31,7 @@ from app.integrations.agents.agent_client import (
 from app.integrations.agents.contracts import AttemptEventSummaryRequest
 
 
-SERVICE_SECRET = "shared-secret-for-tests"
+SERVICE_SECRET = "backend-test-shared-key-generated-with-at-least-32-bytes"
 CORRELATION_EVENT_TIME_1 = "2026-11-25T10:15:30Z"
 CORRELATION_EVENT_TIME_2 = "2026-11-25T10:15:34Z"
 
@@ -96,6 +104,186 @@ def test_agent_service_timeouts_have_positive_defaults_and_are_configurable() ->
 
     with pytest.raises(ValueError, match="AGENT_SERVICE_CONNECT_TIMEOUT_SECONDS"):
         load_agent_service_timeouts({"AGENT_SERVICE_CONNECT_TIMEOUT_SECONDS": "0"})
+
+
+def test_backend_request_boundary_preserves_valid_correlation_id() -> None:
+    app = FastAPI()
+    app.add_middleware(CorrelationIdMiddleware)
+
+    @app.get("/correlation")
+    async def correlation(request: Request) -> dict[str, str | None]:
+        return {
+            "state": request.state.correlation_id,
+            "context": get_current_correlation_id(),
+        }
+
+    correlation_id = "backend-request:valid-123"
+    with TestClient(app) as client:
+        response = client.get(
+            "/correlation", headers={CORRELATION_ID_HEADER: correlation_id}
+        )
+
+    assert response.json() == {"state": correlation_id, "context": correlation_id}
+    assert response.headers[CORRELATION_ID_HEADER] == correlation_id
+    assert get_current_correlation_id() is None
+
+
+@pytest.mark.parametrize("supplied", [None, "invalid correlation id"])
+def test_backend_request_boundary_generates_uuid_for_missing_or_invalid_id(
+    supplied: str | None,
+) -> None:
+    app = FastAPI()
+    app.add_middleware(CorrelationIdMiddleware)
+
+    @app.get("/correlation")
+    async def correlation(request: Request) -> dict[str, str | None]:
+        return {
+            "state": request.state.correlation_id,
+            "context": get_current_correlation_id(),
+        }
+
+    headers = {} if supplied is None else {CORRELATION_ID_HEADER: supplied}
+    with TestClient(app) as client:
+        response = client.get("/correlation", headers=headers)
+
+    generated = response.json()["state"]
+    assert isinstance(generated, str)
+    assert len(generated) == 32
+    assert all(character in "0123456789abcdef" for character in generated)
+    if supplied is not None:
+        assert generated != supplied
+    assert response.json() == {"state": generated, "context": generated}
+    assert response.headers[CORRELATION_ID_HEADER] == generated
+    assert get_current_correlation_id() is None
+
+
+def test_backend_correlation_middleware_is_installed_on_production_app() -> None:
+    from app.main import app as backend_app
+
+    assert any(
+        middleware.cls is CorrelationIdMiddleware
+        for middleware in backend_app.user_middleware
+    )
+
+
+def test_backend_correlation_context_resets_after_request_exception() -> None:
+    app = FastAPI()
+    app.add_middleware(CorrelationIdMiddleware)
+
+    @app.get("/fail")
+    async def fail() -> None:
+        assert get_current_correlation_id() == "exception-request-id"
+        raise RuntimeError("private request failure")
+
+    @app.get("/echo")
+    async def echo() -> dict[str, str | None]:
+        return {"correlation_id": get_current_correlation_id()}
+
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://backend.test"
+        ) as client:
+            with pytest.raises(RuntimeError, match="private request failure"):
+                await client.get(
+                    "/fail", headers={CORRELATION_ID_HEADER: "exception-request-id"}
+                )
+            assert get_current_correlation_id() is None
+            response = await client.get(
+                "/echo", headers={CORRELATION_ID_HEADER: "subsequent-request-id"}
+            )
+            assert response.json() == {"correlation_id": "subsequent-request-id"}
+            assert response.headers[CORRELATION_ID_HEADER] == "subsequent-request-id"
+            assert get_current_correlation_id() is None
+
+    asyncio.run(exercise())
+
+
+def test_backend_correlation_context_isolated_between_overlapping_requests() -> None:
+    app = FastAPI()
+    app.add_middleware(CorrelationIdMiddleware)
+
+    @app.get("/overlap")
+    async def overlap(request: Request) -> dict[str, str | None]:
+        before = get_current_correlation_id()
+        await request.app.state.barrier.wait()
+        await asyncio.sleep(0)
+        return {
+            "before": before,
+            "after": get_current_correlation_id(),
+            "state": request.state.correlation_id,
+        }
+
+    async def exercise() -> list[httpx.Response]:
+        app.state.barrier = asyncio.Barrier(2)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://backend.test"
+        ) as client:
+            return await asyncio.gather(
+                client.get("/overlap", headers={CORRELATION_ID_HEADER: "overlap-a"}),
+                client.get("/overlap", headers={CORRELATION_ID_HEADER: "overlap-b"}),
+            )
+
+    responses = asyncio.run(exercise())
+    by_id = {response.json()["before"]: response for response in responses}
+    assert set(by_id) == {"overlap-a", "overlap-b"}
+    for correlation_id, response in by_id.items():
+        assert response.json() == {
+            "before": correlation_id,
+            "after": correlation_id,
+            "state": correlation_id,
+        }
+        assert response.headers[CORRELATION_ID_HEADER] == correlation_id
+    assert get_current_correlation_id() is None
+
+
+def _assert_raw_value_absent_from_records(
+    records: list[logging.LogRecord], raw_value: str
+) -> None:
+    standard_fields = set(logging.LogRecord("x", logging.INFO, "", 0, "", (), None).__dict__)
+    for record in records:
+        assert raw_value not in record.getMessage()
+        for key, value in record.__dict__.items():
+            if key in standard_fields:
+                continue
+            assert value is None or isinstance(value, (str, int, float, bool))
+            if isinstance(value, str):
+                assert raw_value not in value
+
+
+def test_client_without_request_context_uses_one_generated_id_for_wire_and_logs(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("AGENT_SERVICE_SHARED_SECRET", SERVICE_SECRET)
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=valid_response())
+
+    client = make_client(handler)
+    caplog.set_level(logging.INFO)
+
+    async def invoke_twice() -> None:
+        async with client:
+            await client.summarize_attempt_events(valid_payload())
+            await client.summarize_attempt_events(valid_payload())
+
+    asyncio.run(invoke_twice())
+
+    assert get_current_correlation_id() is None
+    assert len(captured) == 2
+    generated_ids = [request.headers[CORRELATION_ID_HEADER] for request in captured]
+    assert generated_ids[0] != generated_ids[1]
+    for generated in generated_ids:
+        assert len(generated) == 32
+        assert all(character in "0123456789abcdef" for character in generated)
+        assert sum(
+            getattr(record, "correlation_fingerprint", None)
+            == correlation_id_fingerprint(generated)
+            for record in caplog.records
+        ) == 2
+        _assert_raw_value_absent_from_records(caplog.records, generated)
 
 
 def test_from_settings_applies_configured_timeouts(

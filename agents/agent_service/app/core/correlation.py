@@ -1,6 +1,9 @@
 """Validation helpers for request correlation metadata."""
 
+import hmac
+import os
 import re
+from hashlib import sha256
 from uuid import uuid4
 
 
@@ -14,6 +17,20 @@ def is_valid_correlation_id(value: str | None) -> bool:
 
 def new_correlation_id() -> str:
     return uuid4().hex
+
+
+def correlation_id_fingerprint(value: str | None) -> str | None:
+    """Return the same keyed, non-raw log fingerprint as Backend."""
+
+    if value is None:
+        return None
+    key = os.getenv("AGENT_SERVICE_SHARED_SECRET", "").strip().encode("utf-8")
+    # The setup guide generates 32 random bytes. Missing or shorter credentials
+    # must not silently fall back to an unkeyed hash.
+    if len(key) < 32:
+        return None
+    digest = hmac.new(key, value.encode("utf-8"), sha256).hexdigest()
+    return f"hmac-sha256:{digest}"
 
 
 def request_correlation_id(request: object) -> str:

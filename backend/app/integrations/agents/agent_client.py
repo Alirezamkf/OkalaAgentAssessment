@@ -1,6 +1,9 @@
 """Authenticated, reusable HTTP client boundary for the Agent Service."""
 
+import logging
 import math
+import time
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -10,6 +13,12 @@ from app.core.config import (
     DEFAULT_AGENT_SERVICE_CONNECT_TIMEOUT_SECONDS,
     DEFAULT_AGENT_SERVICE_REQUEST_TIMEOUT_SECONDS,
     load_agent_service_timeouts,
+)
+from app.core.correlation import (
+    correlation_id_fingerprint,
+    get_current_correlation_id,
+    is_valid_correlation_id,
+    new_correlation_id,
 )
 from app.integrations.agents.contracts import (
     AttemptEventSummaryRequest,
@@ -21,6 +30,11 @@ from app.integrations.agents.contracts import (
 ATTEMPT_EVENT_SUMMARY_PATH = "/api/v1/workflows/attempt-event-summary"
 HR_REPORTING_PATH = "/api/v1/workflows/hr-reporting"
 WORKFLOW_ENDPOINTS = frozenset({ATTEMPT_EVENT_SUMMARY_PATH, HR_REPORTING_PATH})
+WORKFLOW_OPERATIONS = {
+    ATTEMPT_EVENT_SUMMARY_PATH: "attempt_event_summary",
+    HR_REPORTING_PATH: "hr_reporting",
+}
+logger = logging.getLogger(__name__)
 
 
 class AgentServiceAuthenticationNotConfiguredError(RuntimeError):
@@ -144,7 +158,14 @@ class AgentServiceClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def post_workflow(self, path: str, payload: Any) -> httpx.Response:
+    async def post_workflow(
+        self,
+        path: str,
+        payload: Any,
+        *,
+        correlation_id: str | None = None,
+        _log_operation: bool = True,
+    ) -> httpx.Response:
         """Send JSON to a contract-approved workflow path."""
 
         if path not in WORKFLOW_ENDPOINTS:
@@ -154,24 +175,79 @@ class AgentServiceClient:
         if secret is None or not secret.get_secret_value().strip():
             raise AgentServiceAuthenticationNotConfiguredError()
 
+        if not is_valid_correlation_id(correlation_id):
+            correlation_id = get_current_correlation_id()
+        if not is_valid_correlation_id(correlation_id):
+            correlation_id = new_correlation_id()
+
+        start_clock = time.perf_counter()
+        log_context = {
+            "operation": WORKFLOW_OPERATIONS[path],
+            "correlation_fingerprint": correlation_id_fingerprint(correlation_id),
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if _log_operation:
+            logger.info("Backend Agent Service request started", extra=log_context)
         try:
-            response = await self._client.post(
-                path,
-                json=payload,
-                headers={
+            try:
+                headers = {
                     "Authorization": f"AgentService {secret.get_secret_value()}"
+                }
+                headers["X-Correlation-ID"] = correlation_id
+                response = await self._client.post(
+                    path,
+                    json=payload,
+                    headers=headers,
+                )
+            except httpx.TimeoutException:
+                raise AgentServiceTimeoutError() from None
+            except httpx.RequestError:
+                raise AgentServiceUnavailableError() from None
+            except Exception:
+                # Custom transport failures can also retain headers or request data.
+                raise AgentServiceUnavailableError() from None
+
+            if not 200 <= response.status_code < 300:
+                raise AgentServiceHTTPError(response.status_code)
+        except Exception as exc:
+            failure_category = (
+                exc.code
+                if isinstance(
+                    exc,
+                    (
+                        AgentServiceAuthenticationNotConfiguredError,
+                        AgentServiceUnavailableError,
+                        AgentServiceTimeoutError,
+                        AgentServiceResponseError,
+                        AgentServiceHTTPError,
+                    ),
+                )
+                else "request_failed"
+            )
+            if _log_operation:
+                logger.warning(
+                    "Backend Agent Service request completed",
+                    extra={
+                        **log_context,
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                        "duration_ms": (time.perf_counter() - start_clock) * 1000,
+                        "outcome": "failure",
+                        "failure_category": failure_category,
+                    },
+                )
+            raise
+
+        if _log_operation:
+            logger.info(
+                "Backend Agent Service request completed",
+                extra={
+                    **log_context,
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "duration_ms": (time.perf_counter() - start_clock) * 1000,
+                    "outcome": "success",
+                    "http_status": response.status_code,
                 },
             )
-        except httpx.TimeoutException:
-            raise AgentServiceTimeoutError() from None
-        except httpx.RequestError:
-            raise AgentServiceUnavailableError() from None
-        except Exception:
-            # Custom transport failures can also retain headers or request data.
-            raise AgentServiceUnavailableError() from None
-
-        if not 200 <= response.status_code < 300:
-            raise AgentServiceHTTPError(response.status_code)
         return response
 
     async def summarize_attempt_events(
@@ -185,12 +261,62 @@ class AgentServiceClient:
         except ValidationError:
             raise ValueError("Attempt Event Summary request is invalid") from None
 
-        response = await self.post_workflow(
-            ATTEMPT_EVENT_SUMMARY_PATH,
-            request.model_dump(mode="json"),
-        )
+        correlation_id = get_current_correlation_id()
+        if not is_valid_correlation_id(correlation_id):
+            correlation_id = new_correlation_id()
+        started_at = datetime.now(timezone.utc).isoformat()
+        start_clock = time.perf_counter()
+        log_context = {
+            "operation": "attempt_event_summary",
+            "correlation_fingerprint": correlation_id_fingerprint(correlation_id),
+            "started_at": started_at,
+        }
+        logger.info("Backend Agent Service workflow started", extra=log_context)
         try:
+            response = await self.post_workflow(
+                ATTEMPT_EVENT_SUMMARY_PATH,
+                request.model_dump(mode="json"),
+                correlation_id=correlation_id,
+                _log_operation=False,
+            )
             body = response.json()
-            return validate_attempt_event_summary_response(body, request)
-        except (ValueError, TypeError):
-            raise AgentServiceResponseError() from None
+            result = validate_attempt_event_summary_response(body, request)
+        except Exception as exc:
+            failure_category = (
+                exc.code
+                if isinstance(
+                    exc,
+                    (
+                        AgentServiceAuthenticationNotConfiguredError,
+                        AgentServiceUnavailableError,
+                        AgentServiceTimeoutError,
+                        AgentServiceResponseError,
+                        AgentServiceHTTPError,
+                    ),
+                )
+                else "request_failed"
+            )
+            logger.warning(
+                "Backend Agent Service workflow completed",
+                extra={
+                    **log_context,
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "duration_ms": (time.perf_counter() - start_clock) * 1000,
+                    "outcome": "failure",
+                    "failure_category": failure_category,
+                },
+            )
+            if isinstance(exc, (ValueError, TypeError)):
+                raise AgentServiceResponseError() from None
+            raise
+
+        logger.info(
+            "Backend Agent Service workflow completed",
+            extra={
+                **log_context,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "duration_ms": (time.perf_counter() - start_clock) * 1000,
+                "outcome": "success",
+            },
+        )
+        return result

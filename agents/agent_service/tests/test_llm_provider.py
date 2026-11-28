@@ -7,6 +7,7 @@ import pytest
 from pydantic import BaseModel, SecretStr
 
 from app.core.config import LLMSettings
+from app.core.correlation import correlation_id_fingerprint
 from app.integrations.llm.errors import (
     LLMProviderConnectionError,
     LLMProviderHTTPError,
@@ -40,8 +41,13 @@ def provider_response(content: str, *, status_code: int = 200) -> httpx.Response
 
 
 def test_sends_configured_request_and_parses_typed_response(
+    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    monkeypatch.setenv(
+        "AGENT_SERVICE_SHARED_SECRET",
+        "agent-provider-test-key-generated-with-32-or-more-bytes",
+    )
     seen: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -77,10 +83,35 @@ def test_sends_configured_request_and_parses_typed_response(
     assert result.model == "test-model"
     assert "placeholder-secret" not in caplog.text
     assert "safe test prompt" not in caplog.text
-    assert any(
-        getattr(record, "correlation_id", None) == "request-123"
-        for record in caplog.records
+    standard_fields = set(
+        logging.LogRecord("x", logging.INFO, "", 0, "", (), None).__dict__
     )
+    for sensitive in ("placeholder-secret", "safe test prompt"):
+        for record in caplog.records:
+            assert sensitive not in record.getMessage()
+            for key, value in record.__dict__.items():
+                if key in standard_fields:
+                    continue
+                assert value is None or isinstance(value, (str, int, float, bool))
+                if isinstance(value, str):
+                    assert sensitive not in value
+    request_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "correlation_fingerprint", None)
+        == correlation_id_fingerprint("request-123")
+    )
+    assert not hasattr(request_record, "correlation_id")
+    assert "request-123" not in request_record.getMessage()
+    standard_fields = set(
+        logging.LogRecord("x", logging.INFO, "", 0, "", (), None).__dict__
+    )
+    for key, value in request_record.__dict__.items():
+        if key in standard_fields:
+            continue
+        assert value is None or isinstance(value, (str, int, float, bool))
+        if isinstance(value, str):
+            assert "request-123" not in value
 
 
 def test_maps_timeout_to_safe_error(caplog: pytest.LogCaptureFixture) -> None:
