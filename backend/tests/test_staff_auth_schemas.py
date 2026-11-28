@@ -167,6 +167,15 @@ def test_identity_type_values_are_exact():
     }
 
 
+def test_hr_role_is_the_shared_domain_enum():
+    from app.domain.hr_roles import HRRole as DomainHRRole
+    from app.models.hr_user_role import HRRole as ModelHRRole
+
+    assert HRRole is DomainHRRole
+    assert ModelHRRole is DomainHRRole
+    assert HRStaffIdentity.model_fields["hr_role"].annotation is DomainHRRole
+
+
 def test_hr_role_values_are_exact():
     assert {member.value for member in HRRole} == {
         "HR",

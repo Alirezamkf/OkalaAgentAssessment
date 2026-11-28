@@ -15,7 +15,9 @@ from app.models.exam_invitation_question import ExamInvitationQuestion
 from app.models.exam_template import ExamTemplate
 from app.models.exam_template_question import ExamTemplateQuestion
 from app.models.exam_template_question_option import ExamTemplateQuestionOption
+from app.domain.hr_roles import HRRole
 from app.models.hr_user import HRUser
+from app.models.hr_user_role import HRUserRole
 from app.models.recording_metadata import RecordingMetadata
 
 __all__ = [
@@ -37,6 +39,8 @@ __all__ = [
     "ExamQuestion",
     "ExamQuestionOption",
     "HRUser",
+    "HRRole",
+    "HRUserRole",
     "ExamTemplate",
     "ExamTemplateQuestion",
     "ExamTemplateQuestionOption",

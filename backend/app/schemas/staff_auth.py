@@ -27,7 +27,9 @@ fields and have them echoed back as authoritative data.
 The HR role is a separate typed value and is not a column on ``HRUser``. The
 authentication implementation must resolve it from trusted persisted account
 data (for example a separate HR role assignment store), never from the login
-request or from the seven-column ``HRUser`` table.
+request or from the seven-column ``HRUser`` table. ``HRRole`` is imported from
+``app.domain.hr_roles`` so the API contract and the persistence layer use the
+same enum definition; it is re-exported here for existing callers.
 """
 
 from datetime import datetime
@@ -36,6 +38,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, field_validator
 
+from app.domain.hr_roles import HRRole
 from app.schemas.base import StrictModel
 
 
@@ -59,14 +62,6 @@ class StaffIdentityType(str, Enum):
 
     HR = "HR"
     TECHNICAL_SUPPORT = "TECHNICAL_SUPPORT"
-
-
-class HRRole(str, Enum):
-    """The authoritative HR roles, resolved by the backend after login."""
-
-    HR = "HR"
-    HR_ADMIN = "HRAdmin"
-    HR_MANAGEMENT = "HRManagement"
 
 
 class StaffLoginContext(str, Enum):
