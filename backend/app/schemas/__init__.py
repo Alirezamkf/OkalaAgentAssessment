@@ -14,8 +14,28 @@ from app.schemas.candidate import (
     CandidateRegistrationInput,
     CandidateRegistrationRequest,
 )
+from app.schemas.staff_auth import (
+    HRRole,
+    HRStaffIdentity,
+    SessionTokenType,
+    StaffAuthenticationResponse,
+    StaffIdentityType,
+    StaffLoginContext,
+    StaffLoginRequest,
+    StaffSession,
+    TechnicalSupportStaffIdentity,
+)
 
 __all__ = [
+    "HRRole",
+    "HRStaffIdentity",
+    "SessionTokenType",
+    "StaffAuthenticationResponse",
+    "StaffIdentityType",
+    "StaffLoginContext",
+    "StaffLoginRequest",
+    "StaffSession",
+    "TechnicalSupportStaffIdentity",
     "AttemptEventCreate",
     "AttemptEventResponse",
     "ExamCreateResponse",
