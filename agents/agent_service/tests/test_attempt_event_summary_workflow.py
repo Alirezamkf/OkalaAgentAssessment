@@ -202,12 +202,20 @@ def test_workflow_logs_safe_timing_and_correlation_metadata(
         "Agent workflow completed",
     ]
     expected_fingerprint = correlation_id_fingerprint(correlation_id)
+    start_record, completion_record = workflow_records
+    assert start_record.operation == "attempt_event_summary"
+    assert start_record.started_at
+    assert start_record.correlation_fingerprint == expected_fingerprint
+    assert completion_record.operation == "attempt_event_summary"
+    assert completion_record.completed_at
+    assert completion_record.duration_ms >= 0
+    assert completion_record.outcome == "success"
+    assert completion_record.correlation_fingerprint == expected_fingerprint
     assert all(
         record.correlation_fingerprint == expected_fingerprint
         for record in workflow_records
     )
     assert workflow_records[0].started_at
-    assert workflow_records[1].started_at
     assert workflow_records[1].completed_at
     assert workflow_records[1].duration_ms >= 0
     assert workflow_records[1].outcome == "success"
