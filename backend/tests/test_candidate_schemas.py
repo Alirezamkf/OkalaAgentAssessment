@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from app.schemas.candidate import (
     CandidateInvitationRequest,
     CandidateInvitationResponse,
+    CandidateRegistrationInput,
     CandidateRegistrationRequest,
 )
 
@@ -236,12 +237,67 @@ def test_strict_models_reject_unknown_fields():
         )
 
 
-def test_candidate_registration_input_remains_unchanged():
-    """The pre-existing input schema must keep its original behavior."""
-    from app.schemas.candidate import CandidateRegistrationInput
-
+def test_candidate_registration_input_normalizes_phone():
+    """The pre-existing input schema keeps its phone normalization behavior."""
     registration = CandidateRegistrationInput(
         first_name="Ali", last_name="Rezayi", phone="09121234567"
     )
     assert registration.first_name == "Ali"
     assert registration.phone == "+989121234567"
+
+
+def test_registration_accepts_100_character_names():
+    request = CandidateRegistrationRequest(
+        **registration_data(first_name="A" * 100, last_name="B" * 100)
+    )
+    assert request.first_name == "A" * 100
+    assert request.last_name == "B" * 100
+
+
+def test_registration_rejects_101_character_names():
+    with pytest.raises(ValidationError):
+        CandidateRegistrationRequest(**registration_data(first_name="A" * 101))
+    with pytest.raises(ValidationError):
+        CandidateRegistrationRequest(**registration_data(last_name="B" * 101))
+
+
+def test_registration_input_accepts_email_only():
+    value = CandidateRegistrationInput(
+        first_name="Ali", last_name="Rezayi", email="ali@example.com"
+    )
+    assert value.email == "ali@example.com"
+    assert value.phone is None
+
+
+def test_registration_input_accepts_phone_only():
+    value = CandidateRegistrationInput(
+        first_name="Ali", last_name="Rezayi", phone="09121234567"
+    )
+    assert value.email is None
+    assert value.phone == "+989121234567"
+
+
+def test_registration_input_accepts_both_contact_methods():
+    value = CandidateRegistrationInput(
+        first_name="Ali",
+        last_name="Rezayi",
+        email="ali@example.com",
+        phone="09121234567",
+    )
+    assert value.email == "ali@example.com"
+    assert value.phone == "+989121234567"
+
+
+def test_registration_input_rejects_missing_contact_methods():
+    with pytest.raises(ValidationError, match="At least one of email or phone"):
+        CandidateRegistrationInput(first_name="Ali", last_name="Rezayi")
+
+
+@pytest.mark.parametrize("blank_phone", ["", "   ", "\t\n"])
+def test_registration_input_rejects_blank_phone_as_contact(blank_phone):
+    """Blank phone normalizes to None, so it cannot satisfy the contact rule."""
+
+    with pytest.raises(ValidationError, match="At least one of email or phone"):
+        CandidateRegistrationInput(
+            first_name="Ali", last_name="Rezayi", phone=blank_phone
+        )

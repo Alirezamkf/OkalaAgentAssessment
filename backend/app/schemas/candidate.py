@@ -32,6 +32,14 @@ class CandidateRegistrationInput(BaseModel):
 
         return normalize_phone(value)
 
+    @model_validator(mode="after")
+    def require_at_least_one_contact(self) -> Self:
+        """Require email or phone, matching the registration service rule."""
+
+        if self.email is None and self.phone is None:
+            raise ValueError("At least one of email or phone is required")
+        return self
+
 
 class CandidateRegistrationRequest(StrictModel):
     """HR-provided candidate details for registration in an actual exam.
@@ -41,8 +49,8 @@ class CandidateRegistrationRequest(StrictModel):
     """
 
     exam_id: PositiveInt
-    first_name: str = Field(min_length=1, max_length=120)
-    last_name: str = Field(min_length=1, max_length=120)
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=50)
 

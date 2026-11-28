@@ -15,8 +15,9 @@ if TYPE_CHECKING:
 class Candidate(Base):
     """Candidate identity and contact details shared across examinations.
 
-    A candidate is intentionally not tied directly to an exam. Future
-    invitation records will connect this global identity to one or more exams.
+    A candidate is intentionally not tied directly to an exam. The
+    ``invitations`` relationship connects this global identity to one or more
+    exams through separate ExamInvitation records.
     """
 
     __tablename__ = "candidates"
