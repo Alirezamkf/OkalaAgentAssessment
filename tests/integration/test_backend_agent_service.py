@@ -318,6 +318,16 @@ def test_backend_request_correlation_reaches_agent_workflow_and_provider_without
         record.correlation_fingerprint == expected_fingerprint
         for record in workflow_records
     )
+    start_records = [
+        record
+        for record in workflow_records
+        if record.getMessage() in {
+            "Backend Agent Service workflow started",
+            "Agent workflow started",
+        }
+    ]
+    assert len(start_records) == 2
+    assert all(record.started_at for record in start_records)
     completed_records = [
         record
         for record in workflow_records
@@ -325,7 +335,7 @@ def test_backend_request_correlation_reaches_agent_workflow_and_provider_without
     ]
     assert len(completed_records) == 2
     assert all(record.duration_ms >= 0 for record in completed_records)
-    assert all(record.started_at and record.completed_at for record in completed_records)
+    assert all(record.completed_at for record in completed_records)
     correlation_records = [
         record
         for record in caplog.records
