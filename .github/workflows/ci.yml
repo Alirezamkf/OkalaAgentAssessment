@@ -80,6 +80,24 @@ jobs:
       - name: Run tests
         run: python -m pytest
 
+  backend-agent-integration:
+    name: Backend-to-Agent integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Backend and Agent Service dependencies
+        run: python -m pip install -r backend/requirements.txt -r agents/agent_service/requirements.txt pytest
+
+      - name: Run in-process integration tests
+        run: python -m pytest tests/integration
+
   docker:
     name: Docker Compose validation
     runs-on: ubuntu-latest
