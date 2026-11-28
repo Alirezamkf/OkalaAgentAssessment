@@ -6,6 +6,7 @@ import importlib
 import asyncio
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -19,6 +20,10 @@ from pydantic import SecretStr
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = ROOT / "backend"
 AGENT_ROOT = ROOT / "agents" / "agent_service"
+# Backend Settings requires DATABASE_URL at import time. These integration
+# tests never use the database, so force a local in-memory SQLite placeholder
+# before importing Backend modules and avoid inheriting any PostgreSQL URL.
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
