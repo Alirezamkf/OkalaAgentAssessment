@@ -16,6 +16,11 @@ erDiagram
         VARCHAR500 profile_image_reference "NULL"
     }
 
+    HR_USER_ROLES {
+        BIGINT hr_user_id PK,FK "NOT NULL; ON DELETE CASCADE"
+        VARCHAR20 role "NOT NULL; HR or HRAdmin or HRManagement"
+    }
+
     EXAM_TEMPLATES {
         BIGINT id PK "NOT NULL"
         VARCHAR200 name "NOT NULL"
@@ -180,6 +185,8 @@ erDiagram
         VARCHAR32 version_num PK "NOT NULL"
     }
 
+    HR_USERS ||--o| HR_USER_ROLES : has_authoritative_role
+
     HR_USERS ||--o{ EXAM_TEMPLATES : creates
     HR_USERS ||--o{ EXAMS : creates
     HR_USERS o|--o{ ASSESSMENT_ATTEMPTS : decides
@@ -221,6 +228,9 @@ The database is organized around reusable Exam Templates, actual Exam snapshot q
 
 ### `hr_users`
 Stores HR accounts and the existing HR decision user relationship. The current model exposes `id`, `username`, `password_hash`, `first_name`, `last_name`, `position`, and `profile_image_reference`. The approved relationship to Exam and ExamTemplate creators is one-way; this table does not expose reverse template/exam collections.
+
+### `hr_user_roles`
+Stores the single authoritative HR application role for one HR account. `hr_user_id` is both the primary key and a foreign key to `hr_users.id` with `ON DELETE CASCADE`, so an account has at most one effective role and the assignment disappears with the account. The role column accepts exactly `HR`, `HRAdmin`, and `HRManagement`, enforced by a check constraint and a non-native SQLAlchemy enum. This table is separate because the approved `hr_users` table must retain exactly its seven columns. Technical Support identities are not stored here.
 
 ### `exam_templates`
 Stores reusable Exam definitions. It belongs to one HR owner and contains ordered template questions.
@@ -306,8 +316,9 @@ CandidateConsent has no direct foreign key to AssessmentAttempt; it is reached t
 
 ### Primary and unique constraints
 
-- Every application table has a `BIGINT` primary key named `id`.
+- Every application table has a `BIGINT` primary key. Most use a column named `id`; `hr_user_roles` uses `hr_user_id`.
 - `hr_users.username` is unique and NOT NULL.
+- `hr_user_roles.hr_user_id` is the primary key and a foreign key to `hr_users.id`, allowing at most one effective role per HR account.
 - `exams.name` is unique and NOT NULL.
 - `exam_template_questions` has unique `(exam_template_id, position)`.
 - `exam_template_question_options` has unique `(exam_template_question_id, position)`.
@@ -323,6 +334,7 @@ CandidateConsent has no direct foreign key to AssessmentAttempt; it is reached t
 
 ### Check constraints
 
+- `hr_user_roles.role` is one of `HR`, `HRAdmin`, or `HRManagement`.
 - Exam template name is non-empty.
 - Template question position is positive and score is positive.
 - Template and exam option positions are positive.
@@ -349,7 +361,17 @@ CandidateConsent has no direct foreign key to AssessmentAttempt; it is reached t
 - AttemptEvent has attempt/timestamp and event-type indexes.
 - Retention processing has a status index.
 
-## E. Design Notes
+## E. HR Role Persistence
+
+HR roles are stored in `hr_user_roles`, not in `hr_users`, because the approved HRUser table has exactly seven columns and a role column is forbidden. The three approved values are `HR`, `HRAdmin`, and `HRManagement`. `hr_user_id` is both primary key and foreign key, so there is exactly one authoritative effective role per HR account and no competing role source.
+
+The backend resolves a role through `app.services.hr_role_resolution.resolve_hr_role`, which reads the persisted assignment for the account. It never accepts a role from a request body, query parameter, header, or client state. A missing assignment raises `HRRoleNotAssignedError`, an unknown account raises `HRUserNotFoundError`, and an unsupported stored value raises `HRRoleInvalidError`. There is no default role and no implicit `HR` fallback: resolution fails closed. `assign_hr_role` is the backend-only write path and rejects anything that is not an approved `HRRole` member.
+
+Initial `HRManagement` provisioning remains an outstanding acceptance criterion for issue #249. The repository has no approved password-hashing mechanism and no administrative provisioning procedure, and this issue does not add one. No public endpoint, application endpoint, or insecure script creates or promotes an HRManagement account. A separate approved issue must define secure password hashing and the administrative/database procedure that creates the HRUser and its HRManagement assignment atomically. Until then the initial HRManagement account cannot be provisioned by this codebase.
+
+Migration and rollback: revision `20261128_0700` follows `20261120_0710`. `upgrade()` creates only `hr_user_roles` with its primary key, foreign key, and check constraint. It does not alter `hr_users`, delete account data, or invent roles for existing accounts. `downgrade()` drops only `hr_user_roles`. Run migrations with `alembic upgrade head` and roll back one revision with `alembic downgrade 20261120_0710`. Focused tests verify upgrade and downgrade against an isolated SQLite database. The actual Alembic CLI upgrade and downgrade were also verified against a disposable PostgreSQL 18 database in a temporary container. No development or production database was used.
+
+## F. Design Notes
 
 - Template questions and options are copied into independent Exam snapshot tables.
 - Invitation selections and Attempt presentation order are separate concepts.
@@ -360,12 +382,12 @@ CandidateConsent has no direct foreign key to AssessmentAttempt; it is reached t
 - `AttemptRecordingPause` is not currently registered in ORM metadata and is therefore excluded.
 - `alembic_version` is migration metadata and is omitted from application relationships.
 
-## F. Schema Verification
+
+## G. Schema Verification
 
 - PostgreSQL database name: `okala_assessment` as configured for Docker/local setup.
-- Current Alembic revision: `20261120_0710_replace_question_bank_with_templates.py` (`20261120_0710`).
-- Application tables: 17.
-- Live PostgreSQL schema was not reliably inspected in this run.
+- Latest Alembic revision in this branch: `20261128_0700_add_hr_user_roles.py` (`20261128_0700`). The development database's applied revision is environment-dependent.
+- Application tables: 18 (excluding `alembic_version`).
+- PostgreSQL migration verification: upgrade and downgrade were tested against a disposable PostgreSQL 18 container. The configured development database was not inspected or modified.
 - `alembic_version` is a migration metadata table outside the application-table count.
-- The ERD is based on ORM metadata and the baseline Alembic migration.
-- No live-database discrepancy can be confirmed because the live schema was unavailable or not reliably readable.
+- The ERD reflects the ORM metadata and migration structure represented in this branch.

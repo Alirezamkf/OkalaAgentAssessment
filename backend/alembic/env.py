@@ -27,6 +27,7 @@ from app.models import (  # noqa: F401 - Register model tables in metadata
     ExamTemplateQuestion,
     ExamTemplateQuestionOption,
     HRUser,
+    HRUserRole,
     RecordingMetadata,
 )
 
