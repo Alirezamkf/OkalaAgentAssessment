@@ -1,4 +1,9 @@
-"""In-process integration tests for the Backend-to-Agent HTTP boundary."""
+"""In-process Backend-to-Agent tests; keep these tests sequential in-process.
+
+Backend and Agent Service share the implicit ``app`` namespace, so the test
+temporarily switches process-wide import state while the Agent ASGI app runs.
+Do not run this module's tests concurrently in one Python process.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +13,8 @@ import json
 import logging
 import os
 import sys
+from contextlib import contextmanager
+from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -35,30 +42,77 @@ from app.integrations.agents.agent_client import (  # noqa: E402
 )
 
 
-def _load_agent_application() -> tuple[ModuleType, Any]:
-    """Load Agent Service's `app` package without mixing Backend's `app` modules."""
-
-    backend_modules = {
+def _app_modules() -> dict[str, ModuleType]:
+    return {
         name: module
         for name, module in sys.modules.items()
         if name == "app" or name.startswith("app.")
     }
-    for name in backend_modules:
-        sys.modules.pop(name, None)
-    sys.path.insert(0, str(AGENT_ROOT))
+
+
+def _is_backend_root(path_entry: str) -> bool:
     try:
+        return Path(path_entry or os.getcwd()).resolve() == BACKEND_ROOT.resolve()
+    except OSError:
+        return False
+
+
+@contextmanager
+def _isolated_app_imports(
+    agent_modules: dict[str, ModuleType] | None = None,
+) -> Iterator[None]:
+    """Temporarily expose only the Agent ``app`` namespace.
+
+    Both service ``app`` directories are namespace packages. Removing cached
+    modules alone is insufficient because their namespace search paths can
+    merge while both service roots remain on ``sys.path``. Snapshot state
+    before mutation, and keep all setup and use inside the restoration guard.
+    """
+
+    original_path = list(sys.path)
+    backend_modules = _app_modules()
+    try:
+        for name in _app_modules():
+            sys.modules.pop(name, None)
+        sys.path[:] = [entry for entry in original_path if not _is_backend_root(entry)]
+        sys.path.insert(0, str(AGENT_ROOT))
+        if agent_modules is not None:
+            sys.modules.update(agent_modules)
+        importlib.invalidate_caches()
+        yield
+    finally:
+        # Nested finally blocks ensure a cleanup failure in one state store
+        # cannot prevent restoration of the other.
+        try:
+            for name in _app_modules():
+                sys.modules.pop(name, None)
+        finally:
+            try:
+                sys.path[:] = original_path
+            finally:
+                sys.modules.update(backend_modules)
+                importlib.invalidate_caches()
+
+
+def _load_agent_application() -> tuple[ModuleType, Any, dict[str, ModuleType]]:
+    """Import and retain Agent objects while restoring Backend import state."""
+
+    with _isolated_app_imports():
         agent_main = importlib.import_module("app.main")
         agent_api = importlib.import_module("app.api.v1.attempt_event_summary")
-        return agent_main, agent_api.get_llm_provider
-    finally:
-        for name in tuple(sys.modules):
-            if name == "app" or name.startswith("app."):
-                sys.modules.pop(name, None)
-        sys.path.remove(str(AGENT_ROOT))
-        sys.modules.update(backend_modules)
+        agent_modules = _app_modules()
+        return agent_main, agent_api.get_llm_provider, agent_modules
 
 
-AGENT_MAIN, AGENT_PROVIDER_DEPENDENCY = _load_agent_application()
+@contextmanager
+def _agent_modules_active() -> Iterator[None]:
+    """Expose Agent modules only while its ASGI app is handling a request."""
+
+    with _isolated_app_imports(AGENT_MODULES):
+        yield
+
+
+AGENT_MAIN, AGENT_PROVIDER_DEPENDENCY, AGENT_MODULES = _load_agent_application()
 AGENT_APP = AGENT_MAIN.app
 
 
@@ -123,7 +177,8 @@ class RecordingASGITransport(httpx.AsyncBaseTransport):
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
-        response = await self.inner.handle_async_request(request)
+        with _agent_modules_active():
+            response = await self.inner.handle_async_request(request)
         self.responses.append(response)
         return response
 
@@ -229,11 +284,12 @@ def test_agent_http_boundary_rejects_invalid_payload_before_provider_call(
         ]
     }
 
-    response = TestClient(AGENT_APP).post(
-        "/api/v1/workflows/attempt-event-summary",
-        json=bad_payload,
-        headers={"Authorization": f"AgentService {SHARED_SECRET}"},
-    )
+    with _agent_modules_active():
+        response = TestClient(AGENT_APP).post(
+            "/api/v1/workflows/attempt-event-summary",
+            json=bad_payload,
+            headers={"Authorization": f"AgentService {SHARED_SECRET}"},
+        )
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "request_validation_error"
